@@ -23,12 +23,13 @@ The prototype is designed to make that idea understandable in the first few seco
 
 ## Main features
 
+- Add, remove, reorder, and annotate photos directly from the home dashboard
 - Upload multiple photos with drag-and-drop or a file picker
-- Add an optional note to explain what happened in each photo
 - Generate a short bilingual diary through a replaceable mock AI function
 - Learn five conversational expressions tied back to individual photos
 - Save daily entries to `localStorage`
-- Review saved expressions with Japanese-to-English and fill-in-the-blank quizzes
+- See each photo paired with the English sentence it generated
+- Answer a one-question review directly on Home, or open the full review flow
 - Browse saved days in a visual photo archive
 - Responsive layouts for phones, tablets, and desktop screens
 

@@ -10,21 +10,20 @@ import {
   SAMPLE_PHOTOS,
 } from "../lib/daily-english";
 
-type Screen = "home" | "create" | "today" | "review" | "history";
+type Screen = "home" | "today" | "review" | "history";
 type Feedback = "correct" | "almost" | "wrong" | null;
 
 const STORAGE_KEY = "daily-english-lens:entries";
 
-function goTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" });
+function formatDay(date: string, long = true) {
+  return new Intl.DateTimeFormat("en-US", long
+    ? { weekday: "long", month: "long", day: "numeric" }
+    : { month: "short", day: "numeric" }
+  ).format(new Date(`${date}T12:00:00`));
 }
 
-function formatDay(date: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(`${date}T12:00:00`));
+function todayLabel() {
+  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "Asia/Tokyo" }).format(new Date());
 }
 
 function normalizeAnswer(value: string) {
@@ -52,13 +51,15 @@ function sampleYesterday() {
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [photos, setPhotos] = useState<PhotoEntry[]>(SAMPLE_PHOTOS);
+  const [photos, setPhotos] = useState<PhotoEntry[]>(SAMPLE_PHOTOS.map((photo) => ({ ...photo })));
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(SAMPLE_PHOTOS[0].id);
+  const [draggedPhotoId, setDraggedPhotoId] = useState<string | null>(null);
   const [activeEntry, setActiveEntry] = useState<DailyEntry>(() => createSampleDailyEntry());
   const [savedEntries, setSavedEntries] = useState<DailyEntry[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [dragging, setDragging] = useState(false);
+  const [fileDragging, setFileDragging] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
-  const [reviewIndex, setReviewIndex] = useState(0);
+  const [reviewIndex, setReviewIndex] = useState(4);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<Feedback>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -66,9 +67,8 @@ export default function Home() {
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setSavedEntries(JSON.parse(stored));
-      } else {
+      if (stored) setSavedEntries(JSON.parse(stored));
+      else {
         const starter = [sampleYesterday()];
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(starter));
         setSavedEntries(starter);
@@ -87,7 +87,13 @@ export default function Home() {
   function navigate(next: Screen) {
     setScreen(next);
     setSavedNotice(false);
-    goTop();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goToCreate() {
+    setScreen("home");
+    setSavedNotice(false);
+    window.setTimeout(() => document.getElementById("today-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
   async function addFiles(files: FileList | File[]) {
@@ -99,10 +105,11 @@ export default function Home() {
         imageUrl: String(reader.result),
         note: "",
         label: file.name.replace(/\.[^.]+$/, ""),
-        time: "Today",
+        time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(file.lastModified)),
       });
       reader.readAsDataURL(file);
     })));
+    if (next.length) setSelectedPhotoId(next[0].id);
     setPhotos((current) => [...current, ...next]);
   }
 
@@ -111,10 +118,43 @@ export default function Home() {
     event.target.value = "";
   }
 
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
+  function handleFileDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
-    setDragging(false);
-    void addFiles(event.dataTransfer.files);
+    setFileDragging(false);
+    if (event.dataTransfer.files.length) void addFiles(event.dataTransfer.files);
+  }
+
+  function removePhoto(id: string) {
+    setPhotos((items) => {
+      const next = items.filter((item) => item.id !== id);
+      if (selectedPhotoId === id) setSelectedPhotoId(next[0]?.id ?? null);
+      return next;
+    });
+  }
+
+  function movePhoto(id: string, direction: -1 | 1) {
+    setPhotos((items) => {
+      const index = items.findIndex((item) => item.id === id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= items.length) return items;
+      const next = [...items];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function reorderPhoto(targetId: string) {
+    if (!draggedPhotoId || draggedPhotoId === targetId) return;
+    setPhotos((items) => {
+      const from = items.findIndex((item) => item.id === draggedPhotoId);
+      const to = items.findIndex((item) => item.id === targetId);
+      if (from < 0 || to < 0) return items;
+      const next = [...items];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setDraggedPhotoId(null);
   }
 
   async function createEnglish() {
@@ -148,9 +188,10 @@ export default function Home() {
   function checkAnswer() {
     if (!currentReview || !answer.trim()) return;
     const expected = normalizeAnswer(currentReview.expression.expression);
+    const suffix = expected.split(" ").slice(1).join(" ");
     const actual = normalizeAnswer(answer);
-    if (actual === expected) setFeedback("correct");
-    else if (distance(actual, expected) <= 2 || expected.includes(actual)) setFeedback("almost");
+    if (actual === expected || (suffix && actual === suffix)) setFeedback("correct");
+    else if (distance(actual, expected) <= 2 || (suffix && distance(actual, suffix) <= 2) || expected.includes(actual)) setFeedback("almost");
     else setFeedback("wrong");
   }
 
@@ -162,38 +203,44 @@ export default function Home() {
 
   return (
     <main>
-      <Header screen={screen} onNavigate={navigate} reviewCount={reviewItems.length} />
+      <Header screen={screen} reviewCount={reviewItems.length} onNavigate={navigate} onCreate={goToCreate} />
 
       {screen === "home" && (
-        <HomeScreen
-          entry={activeEntry}
-          savedEntries={savedEntries}
-          onCreate={() => navigate("create")}
-          onToday={() => navigate("today")}
-          onReview={() => navigate("review")}
-          onHistory={() => navigate("history")}
-        />
-      )}
-
-      {screen === "create" && (
-        <CreateScreen
+        <Dashboard
           photos={photos}
-          dragging={dragging}
+          selectedPhotoId={selectedPhotoId}
+          draggedPhotoId={draggedPhotoId}
+          fileDragging={fileDragging}
           generating={generating}
+          savedEntries={savedEntries}
+          reviewItem={currentReview}
+          answer={answer}
+          feedback={feedback}
           fileInput={fileInput}
-          onDragState={setDragging}
-          onDrop={handleDrop}
-          onFileInput={handleFileInput}
           onPick={() => fileInput.current?.click()}
-          onReset={() => setPhotos(SAMPLE_PHOTOS.map((photo) => ({ ...photo })))}
-          onRemove={(id) => setPhotos((items) => items.filter((item) => item.id !== id))}
+          onFileInput={handleFileInput}
+          onFileDrag={setFileDragging}
+          onFileDrop={handleFileDrop}
+          onSelect={setSelectedPhotoId}
+          onRemove={removePhoto}
+          onMove={movePhoto}
+          onDragStart={setDraggedPhotoId}
+          onDropPhoto={reorderPhoto}
           onNote={(id, note) => setPhotos((items) => items.map((item) => item.id === id ? { ...item, note } : item))}
+          onClear={() => { setPhotos([]); setSelectedPhotoId(null); }}
+          onSample={() => { setPhotos(SAMPLE_PHOTOS.map((photo) => ({ ...photo }))); setSelectedPhotoId(SAMPLE_PHOTOS[0].id); }}
           onGenerate={() => void createEnglish()}
+          onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
+          onCheck={checkAnswer}
+          onNext={nextQuestion}
+          onOpenReview={() => navigate("review")}
+          onOpenHistory={() => navigate("history")}
+          onOpenEntry={(entry) => { setActiveEntry(entry); navigate("today"); }}
         />
       )}
 
       {screen === "today" && (
-        <TodayScreen entry={activeEntry} saved={savedNotice} onSave={saveToday} onReview={() => navigate("review")} />
+        <TodayScreen entry={activeEntry} saved={savedNotice} onSave={saveToday} onReview={() => navigate("review")} onCreate={goToCreate} />
       )}
 
       {screen === "review" && (
@@ -206,235 +253,308 @@ export default function Home() {
           onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
           onCheck={checkAnswer}
           onNext={nextQuestion}
-          onCreate={() => navigate("create")}
+          onCreate={goToCreate}
         />
       )}
 
       {screen === "history" && (
-        <HistoryScreen entries={savedEntries} onOpen={(entry) => { setActiveEntry(entry); navigate("today"); }} />
+        <HistoryScreen entries={savedEntries} onOpen={(entry) => { setActiveEntry(entry); navigate("today"); }} onCreate={goToCreate} />
       )}
 
-      <MobileNav screen={screen} onNavigate={navigate} />
+      <MobileNav screen={screen} onNavigate={navigate} onCreate={goToCreate} />
     </main>
   );
 }
 
-function Header({ screen, onNavigate, reviewCount }: { screen: Screen; onNavigate: (screen: Screen) => void; reviewCount: number }) {
+function Header({ screen, reviewCount, onNavigate, onCreate }: {
+  screen: Screen;
+  reviewCount: number;
+  onNavigate: (screen: Screen) => void;
+  onCreate: () => void;
+}) {
   return (
     <header className="site-header">
       <nav className="nav-shell" aria-label="Primary navigation">
         <button className="brand" type="button" onClick={() => onNavigate("home")} aria-label="Daily English Lens home">
-          <span className="brand-mark">D</span>
-          <span>Daily English Lens</span>
+          <span className="brand-mark">D</span><span>Daily English Lens</span>
         </button>
         <div className="desktop-nav">
+          <button className={screen === "home" ? "active" : ""} onClick={() => onNavigate("home")}>Home</button>
           <button className={screen === "today" ? "active" : ""} onClick={() => onNavigate("today")}>Today</button>
+          <button className={screen === "review" ? "active" : ""} onClick={() => onNavigate("review")}>Review <span className="count-badge">{reviewCount || 5}</span></button>
           <button className={screen === "history" ? "active" : ""} onClick={() => onNavigate("history")}>Past days</button>
-          <button className={`nav-action ${screen === "review" ? "active" : ""}`} onClick={() => onNavigate("review")}>Review <span>{reviewCount || 5}</span></button>
         </div>
+        <button className="header-create" type="button" onClick={onCreate}><span>+</span> Add photos</button>
       </nav>
     </header>
   );
 }
 
-function HomeScreen({ entry, savedEntries, onCreate, onToday, onReview, onHistory }: {
-  entry: DailyEntry;
+function Dashboard(props: {
+  photos: PhotoEntry[];
+  selectedPhotoId: string | null;
+  draggedPhotoId: string | null;
+  fileDragging: boolean;
+  generating: boolean;
   savedEntries: DailyEntry[];
-  onCreate: () => void;
-  onToday: () => void;
-  onReview: () => void;
-  onHistory: () => void;
+  reviewItem?: { entry: DailyEntry; expression: Expression };
+  answer: string;
+  feedback: Feedback;
+  fileInput: React.RefObject<HTMLInputElement | null>;
+  onPick: () => void;
+  onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
+  onFileDrag: (dragging: boolean) => void;
+  onFileDrop: (event: DragEvent<HTMLElement>) => void;
+  onSelect: (id: string) => void;
+  onRemove: (id: string) => void;
+  onMove: (id: string, direction: -1 | 1) => void;
+  onDragStart: (id: string) => void;
+  onDropPhoto: (id: string) => void;
+  onNote: (id: string, note: string) => void;
+  onClear: () => void;
+  onSample: () => void;
+  onGenerate: () => void;
+  onAnswer: (answer: string) => void;
+  onCheck: () => void;
+  onNext: () => void;
+  onOpenReview: () => void;
+  onOpenHistory: () => void;
+  onOpenEntry: (entry: DailyEntry) => void;
 }) {
+  const selected = props.photos.find((photo) => photo.id === props.selectedPhotoId) ?? props.photos[0];
+
   return (
     <>
-      <section className="hero" id="top">
-        <div className="hero-copy reveal">
-          <p className="eyebrow"><span /> Your life is the lesson</p>
-          <h1>Turn your day<br />into <em>English.</em></h1>
-          <p className="hero-description">今日撮った写真から、<br />あなたが本当に使える英語が生まれる。</p>
-          <button className="primary-button" type="button" onClick={onCreate}>
-            Create today&apos;s English <span aria-hidden="true">↗</span>
-          </button>
-          <p className="microcopy">No textbook. Just your day.</p>
-        </div>
-
-        <div className="memory-stack reveal delay" aria-label="Today’s sample moments">
-          {[entry.photos[0], entry.photos[1], entry.photos[4]].map((moment, index) => moment && (
-            <figure className={`memory-card memory-${index + 1}`} key={moment.id}>
-              <img src={moment.imageUrl} alt={moment.label || "A moment from today"} />
-              <figcaption><span>{moment.time}</span><span className="heart">♡</span></figcaption>
-            </figure>
-          ))}
-          <div className="phrase-note">
-            <span className="note-label">TODAY’S PHRASE</span>
-            <strong>I got caught<br />in the rain.</strong>
-            <span className="translation">急な雨に降られた</span>
+      <section className="dashboard section-shell reveal">
+        <div className="dashboard-welcome">
+          <div>
+            <p className="kicker">Good evening · {todayLabel()}</p>
+            <h1>Turn your day into English.</h1>
+            <p>今日の写真を選んで、3分で自分だけの英語教材に。</p>
           </div>
+          <ProgressRail photoCount={props.photos.length} />
         </div>
-      </section>
 
-      <section className="home-hub section-shell">
-        <div className="section-heading">
-          <div><p className="kicker">A little English, every day</p><h2>Your day is already<br />full of words.</h2></div>
-          <p>特別な教材はいらない。<br />今日の記憶だから、英語が自分の言葉になる。</p>
-        </div>
-        <div className="hub-grid">
-          <button className="hub-card today-card" onClick={onToday}>
-            <div className="hub-card-top"><span className="hub-icon">✶</span><span>01</span></div>
-            <div><p>Today&apos;s English</p><strong>The train was<br /><em>packed.</em></strong></div>
-            <span className="card-link">Open today →</span>
-          </button>
-          <button className="hub-card review-card" onClick={onReview}>
-            <div className="hub-card-top"><span className="hub-icon">↻</span><span>02</span></div>
-            <div><p>Review yesterday</p><strong>「びしょ濡れになる」<br />覚えてる？</strong></div>
-            <span className="quiz-pill">get ______</span>
-          </button>
-          <button className="hub-card history-card" onClick={onHistory}>
-            <div className="hub-card-top"><span className="hub-icon">☷</span><span>03</span></div>
-            <div><p>Past days</p><strong>{Math.max(savedEntries.length, 1)} days,<br />your own English.</strong></div>
-            <div className="mini-photos">
-              {entry.photos.slice(0, 4).map((photo) => <img src={photo.imageUrl} alt="" key={photo.id} />)}
+        <section
+          className={`today-workspace ${props.fileDragging ? "file-dragging" : ""}`}
+          id="today-workspace"
+          onDragEnter={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); props.onFileDrag(true); } }}
+          onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+          onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) props.onFileDrag(false); }}
+          onDrop={props.onFileDrop}
+        >
+          <input ref={props.fileInput} type="file" accept="image/*" multiple hidden onChange={props.onFileInput} />
+          <div className="workspace-head">
+            <div className="section-title-row">
+              <span className="step-number primary">1</span>
+              <div><p className="section-eyebrow">PRIMARY · TODAY</p><h2>Add today&apos;s photos</h2><small>今日を思い出せる写真を、3〜6枚選びましょう。</small></div>
             </div>
-          </button>
-        </div>
-        <div className="life-loop" aria-label="Life to English learning loop">
-          {[["Life", "写真と出来事"], ["English", "使える表現"], ["Memory", "自分の記憶"], ["Review", "翌日の復習"]].map(([title, caption], index) => (
-            <div className="loop-step" key={title}><span>{String(index + 1).padStart(2, "0")}</span><strong>{title}</strong><small>{caption}</small></div>
-          ))}
-        </div>
+            <div className="workspace-actions">
+              <button type="button" onClick={props.onSample}>Sample day</button>
+              {props.photos.length > 0 && <button type="button" className="danger-link" onClick={props.onClear}>Clear</button>}
+            </div>
+          </div>
+
+          {props.photos.length ? (
+            <>
+              <div className="photo-input-grid" aria-label="Selected photos">
+                {props.photos.map((photo, index) => (
+                  <article
+                    className={`photo-input ${photo.id === selected?.id ? "selected" : ""} ${photo.id === props.draggedPhotoId ? "dragging" : ""}`}
+                    key={photo.id}
+                    draggable
+                    onDragStart={() => props.onDragStart(photo.id)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => { event.preventDefault(); event.stopPropagation(); props.onDropPhoto(photo.id); }}
+                  >
+                    <button className="photo-select" type="button" onClick={() => props.onSelect(photo.id)} aria-label={`Edit ${photo.label || `photo ${index + 1}`}`}>
+                      <img src={photo.imageUrl} alt={photo.label || `Moment ${index + 1}`} />
+                      <span className="drag-handle" aria-hidden="true">⋮⋮</span>
+                      <span className="photo-order">{String(index + 1).padStart(2, "0")}</span>
+                      {photo.note && <span className="note-status">✓ Note</span>}
+                    </button>
+                    <div className="photo-input-meta"><span>{photo.time || "Today"}</span><button type="button" onClick={() => props.onRemove(photo.id)} aria-label={`Remove ${photo.label || "photo"}`}>×</button></div>
+                  </article>
+                ))}
+                <button className="add-photo-tile" type="button" onClick={props.onPick}><span>+</span><strong>Add photos</strong><small>JPG, PNG, HEIC</small></button>
+              </div>
+
+              {selected && (
+                <div className="photo-detail-editor">
+                  <img src={selected.imageUrl} alt={selected.label || "Selected moment"} />
+                  <div className="detail-form">
+                    <div className="detail-toolbar">
+                      <div><span>Selected moment</span><strong>{selected.time || "Today"} · {selected.label || "Photo"}</strong></div>
+                      <div><button type="button" onClick={() => props.onMove(selected.id, -1)} aria-label="Move photo left">←</button><button type="button" onClick={() => props.onMove(selected.id, 1)} aria-label="Move photo right">→</button></div>
+                    </div>
+                    <label htmlFor={`note-${selected.id}`}>What happened? <span>optional</span></label>
+                    <textarea id={`note-${selected.id}`} value={selected.note || ""} onChange={(event) => props.onNote(selected.id, event.target.value)} placeholder="例：友達と急いで昼ごはんを食べた" rows={3} />
+                    <p>AIは写真の物体名ではなく、この補足から「何があったか」を優先します。</p>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <button className="empty-uploader" type="button" onClick={props.onPick}>
+              <span>+</span><strong>Choose today&apos;s photos</strong><small>Tap to select, or drop photos here</small>
+            </button>
+          )}
+
+          <div className="workspace-footer">
+            <div className="readiness"><span className={props.photos.length ? "ready" : ""} /> <p><strong>{props.photos.length ? `${props.photos.length} moments ready` : "Add at least one photo"}</strong><small>Notes are optional. You can edit them above.</small></p></div>
+            <button className="generate-button" type="button" disabled={!props.photos.length || props.generating} onClick={props.onGenerate}>
+              <span className="button-step">2</span><span>{props.generating ? "Reading your day…" : "Generate today's English"}</span><b>{props.generating ? "•" : "→"}</b>
+            </button>
+          </div>
+        </section>
+
+        <QuickReview
+          item={props.reviewItem}
+          answer={props.answer}
+          feedback={props.feedback}
+          onAnswer={props.onAnswer}
+          onCheck={props.onCheck}
+          onNext={props.onNext}
+          onOpenReview={props.onOpenReview}
+        />
+
+        <RecentDays entries={props.savedEntries} onOpen={props.onOpenEntry} onOpenHistory={props.onOpenHistory} />
       </section>
-      <Footer />
+      <ConceptSection />
     </>
   );
 }
 
-function CreateScreen({ photos, dragging, generating, fileInput, onDragState, onDrop, onFileInput, onPick, onReset, onRemove, onNote, onGenerate }: {
-  photos: PhotoEntry[];
-  dragging: boolean;
-  generating: boolean;
-  fileInput: React.RefObject<HTMLInputElement | null>;
-  onDragState: (dragging: boolean) => void;
-  onDrop: (event: DragEvent<HTMLDivElement>) => void;
-  onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
-  onPick: () => void;
-  onReset: () => void;
-  onRemove: (id: string) => void;
-  onNote: (id: string, note: string) => void;
-  onGenerate: () => void;
-}) {
+function ProgressRail({ photoCount }: { photoCount: number }) {
   return (
-    <section className="app-screen section-shell reveal">
-      <div className="screen-intro">
-        <div><p className="step-label"><span>1</span> Choose your moments</p><h2>What did today<br /><em>feel like?</em></h2></div>
-        <p>上手な写真じゃなくても大丈夫。<br />「今日らしい」と思う瞬間を選んでください。</p>
-      </div>
+    <div className="progress-rail" aria-label="Today's progress">
+      <div className="active"><span>1</span><p><strong>Add photos</strong><small>{photoCount ? `${photoCount} selected` : "Start here"}</small></p></div>
+      <i />
+      <div><span>2</span><p><strong>Generate</strong><small>About 10 sec</small></p></div>
+      <i />
+      <div><span>3</span><p><strong>Review</strong><small>Tomorrow</small></p></div>
+    </div>
+  );
+}
 
-      <div
-        className={`drop-zone ${dragging ? "dragging" : ""}`}
-        onDragEnter={(event) => { event.preventDefault(); onDragState(true); }}
-        onDragOver={(event) => event.preventDefault()}
-        onDragLeave={() => onDragState(false)}
-        onDrop={onDrop}
-      >
-        <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={onFileInput} />
-        <span className="drop-icon">+</span>
-        <div><strong>Drop today&apos;s photos here</strong><p>or choose from your device</p></div>
-        <button className="secondary-button" type="button" onClick={onPick}>Choose photos</button>
-      </div>
+function QuickReview({ item, answer, feedback, onAnswer, onCheck, onNext, onOpenReview }: {
+  item?: { entry: DailyEntry; expression: Expression };
+  answer: string;
+  feedback: Feedback;
+  onAnswer: (answer: string) => void;
+  onCheck: () => void;
+  onNext: () => void;
+  onOpenReview: () => void;
+}) {
+  if (!item) return null;
+  const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
+  const words = item.expression.expression.split(" ");
+  const prefix = words.length > 1 ? words[0] : "";
+  const prompt = prefix ? `Type the word after “${prefix}”` : "Type the expression";
 
-      <div className="photo-list-header">
-        <div><strong>{photos.length} moments</strong><span>Add a note so AI understands your story.</span></div>
-        <button type="button" onClick={onReset}>Use sample day</button>
+  return (
+    <section className="quick-review-section">
+      <div className="section-title-row compact">
+        <span className="step-number secondary">3</span>
+        <div><p className="section-eyebrow">SECONDARY · YESTERDAY</p><h2>Quick review</h2><small>昨日の写真と、1問だけ。</small></div>
       </div>
-
-      {photos.length ? (
-        <div className="photo-editor-grid">
-          {photos.map((photo, index) => (
-            <article className="photo-editor" key={photo.id}>
-              <div className="editor-photo-wrap">
-                <img src={photo.imageUrl} alt={photo.label || `Moment ${index + 1}`} />
-                <span className="photo-number">{String(index + 1).padStart(2, "0")}</span>
-                <button className="remove-photo" onClick={() => onRemove(photo.id)} aria-label={`Remove ${photo.label || "photo"}`}>×</button>
-              </div>
-              <label htmlFor={`note-${photo.id}`}>
-                <span>What happened? <small>optional</small></span>
-                <textarea id={`note-${photo.id}`} value={photo.note || ""} onChange={(event) => onNote(photo.id, event.target.value)} placeholder="例：友達と食べた" rows={2} />
-              </label>
-            </article>
-          ))}
+      <div className="quick-review-card">
+        <div className="quick-memory">
+          <img src={photo?.imageUrl} alt={photo?.label || "Yesterday's memory"} />
+          <div><span>{formatDay(item.entry.date, false)} · {photo?.time}</span><strong>{photo?.label}</strong></div>
         </div>
-      ) : (
-        <div className="empty-state"><span>◌</span><h3>Your day is waiting.</h3><p>写真を1枚以上追加してください。</p></div>
-      )}
-
-      <div className="generate-bar">
-        <div><span className="spark">✶</span><p><strong>AI looks beyond the objects.</strong><br />It turns the story behind each photo into natural English.</p></div>
-        <button className="primary-button" type="button" disabled={!photos.length || generating} onClick={onGenerate}>
-          {generating ? "Reading your day…" : "Turn my day into English"}
-          <span className={generating ? "loading-dot" : ""}>{generating ? "•" : "↗"}</span>
-        </button>
+        <div className="inline-quiz">
+          <div className="quiz-prompt"><span>Yesterday&apos;s expression</span><h3>{item.expression.japanese}</h3><p>{item.expression.cloze}</p></div>
+          <label htmlFor="home-review-answer">{prompt}</label>
+          <div className={`inline-answer ${feedback || ""}`}>
+            {prefix && <span>{prefix}</span>}
+            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") feedback ? onNext() : onCheck(); }} placeholder="________" autoComplete="off" />
+            <button type="button" onClick={feedback ? onNext : onCheck} disabled={!answer.trim()}>{feedback ? "Next" : "Check answer"}</button>
+          </div>
+          {feedback && (
+            <div className={`inline-feedback ${feedback}`}>
+              <span>{feedback === "correct" ? "✓" : "!"}</span>
+              <p><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"} <b>{item.expression.expression}</b></strong><small>{item.expression.example}</small></p>
+            </div>
+          )}
+          <button className="text-link" type="button" onClick={onOpenReview}>Open full review →</button>
+        </div>
       </div>
     </section>
   );
 }
 
-function TodayScreen({ entry, saved, onSave, onReview }: { entry: DailyEntry; saved: boolean; onSave: () => void; onReview: () => void }) {
+function RecentDays({ entries, onOpen, onOpenHistory }: { entries: DailyEntry[]; onOpen: (entry: DailyEntry) => void; onOpenHistory: () => void }) {
+  const visible = entries.slice(0, 3);
   return (
-    <section className="app-screen section-shell result-screen reveal">
-      <div className="result-heading">
-        <p className="kicker">{formatDay(entry.date)} · Your daily lens</p>
-        <h2>Your Day<br /><em>in English.</em></h2>
-        <p>写真に写った「もの」ではなく、<br />今日のあなたが話したくなること。</p>
+    <section className="recent-section">
+      <div className="recent-head"><div><p className="section-eyebrow">TERTIARY</p><h2>Past days</h2></div><button type="button" onClick={onOpenHistory}>View all →</button></div>
+      <div className="recent-list">
+        {visible.length ? visible.map((entry) => (
+          <button className="recent-row" type="button" key={entry.id} onClick={() => onOpen(entry)}>
+            <div className="recent-thumbs">{entry.photos.slice(0, 3).map((photo) => <img src={photo.imageUrl} alt="" key={photo.id} />)}</div>
+            <div className="recent-copy"><span>{formatDay(entry.date)}</span><strong>{entry.expressions[0]?.example}</strong><small>{entry.expressions.length} expressions saved</small></div>
+            <b>↗</b>
+          </button>
+        )) : <div className="no-history"><p>Your first day will appear here after you save it.</p></div>}
       </div>
+    </section>
+  );
+}
 
-      <div className="day-filmstrip">
-        {entry.photos.map((photo, index) => (
-          <figure key={photo.id}>
-            <img src={photo.imageUrl} alt={photo.label || `Moment ${index + 1}`} />
-            <figcaption><span>{photo.time || `Moment ${index + 1}`}</span><small>{photo.label}</small></figcaption>
-          </figure>
-        ))}
-      </div>
+function TodayScreen({ entry, saved, onSave, onReview, onCreate }: { entry: DailyEntry; saved: boolean; onSave: () => void; onReview: () => void; onCreate: () => void }) {
+  return (
+    <section className="app-screen result-screen section-shell reveal">
+      <div className="page-toolbar"><div><p className="kicker">{formatDay(entry.date)} · Generated</p><h1>Your day in English</h1><p>写真を見ると、その日の英語が思い出せる。</p></div><button className="secondary-action" type="button" onClick={onCreate}>+ Add another day</button></div>
 
-      <article className="diary-card">
-        <div className="diary-label"><span>✶</span><p>Your story</p><small>ENGLISH DIARY</small></div>
-        <div className="diary-copy">
-          <p className="diary-en">{entry.diaryEnglish}</p>
-          <div className="diary-rule" />
-          <p className="diary-ja">{entry.diaryJapanese}</p>
-        </div>
+      <article className="diary-summary">
+        <div><span>DAY SUMMARY</span><strong>✶</strong></div>
+        <div><p>{entry.diaryEnglish}</p><small>{entry.diaryJapanese}</small></div>
       </article>
 
-      <div className="expressions-heading">
-        <div><p className="kicker">Keep these with you</p><h2>Today&apos;s English</h2></div>
-        <p>{entry.expressions.length} expressions from your own day</p>
-      </div>
-      <div className="expression-grid">
-        {entry.expressions.map((expression, index) => (
-          <ExpressionCard key={expression.id} expression={expression} index={index} photo={entry.photos.find((photo) => photo.id === expression.photoId)} />
-        ))}
-      </div>
+      <section className="moment-section">
+        <div className="content-heading"><div><p className="section-eyebrow">MEMORY → ENGLISH</p><h2>Each moment,<br />in your words.</h2></div><p>{entry.photos.length} photos · {entry.expressions.length} expressions</p></div>
+        <div className="moment-story-list">
+          {entry.photos.map((photo, index) => {
+            const moment = entry.moments?.find((candidate) => candidate.photoId === photo.id);
+            const expression = entry.expressions.find((candidate) => candidate.photoId === photo.id);
+            return (
+              <article className="moment-story" key={photo.id}>
+                <div className="moment-photo"><img src={photo.imageUrl} alt={photo.label || `Moment ${index + 1}`} /><span>{String(index + 1).padStart(2, "0")}</span></div>
+                <div className="moment-copy">
+                  <div className="moment-meta"><span>{photo.time || "Today"}</span><small>{photo.label}</small></div>
+                  <strong>{moment?.english || expression?.example || "I wanted to remember this moment."}</strong>
+                  <p>{moment?.japanese || expression?.japanese}</p>
+                  {photo.note && <div className="source-note"><span>YOUR NOTE</span>{photo.note}</div>}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
-      <div className="save-panel">
-        <div><span className="save-mark">D</span><p><strong>{saved ? "Saved to your memories." : "Keep today close."}</strong><br />{saved ? "Come back tomorrow for a quick review." : "Save these expressions and meet them again tomorrow."}</p></div>
-        <button className={saved ? "secondary-button saved-button" : "primary-button"} onClick={saved ? onReview : onSave}>
-          {saved ? "Start a quick review" : "Save today's English"}<span>{saved ? "→" : "♡"}</span>
-        </button>
+      <section className="expression-section">
+        <div className="content-heading"><div><p className="section-eyebrow">SAVE FOR LATER</p><h2>Today&apos;s English</h2></div><p>明日も使える、今日の表現。</p></div>
+        <div className="expression-list">
+          {entry.expressions.map((expression, index) => <ExpressionRow key={expression.id} expression={expression} index={index} />)}
+        </div>
+      </section>
+
+      <div className="save-dock">
+        <div><span className="save-icon">{saved ? "✓" : "♡"}</span><p><strong>{saved ? "Saved. See you tomorrow." : "Keep today in your memory."}</strong><small>{saved ? "Your review is ready." : "Save these expressions for tomorrow's review."}</small></p></div>
+        <button type="button" onClick={saved ? onReview : onSave}>{saved ? "Start review" : "Save today's English"}<span>→</span></button>
       </div>
     </section>
   );
 }
 
-function ExpressionCard({ expression, index, photo }: { expression: Expression; index: number; photo?: PhotoEntry }) {
+function ExpressionRow({ expression, index }: { expression: Expression; index: number }) {
   return (
-    <article className="expression-card">
-      <div className="expression-photo">{photo && <img src={photo.imageUrl} alt="" />}<span>{String(index + 1).padStart(2, "0")}</span></div>
-      <div className="expression-body">
-        <p className="expression-word">{expression.expression}</p>
-        <p className="expression-ja">{expression.japanese}</p>
-        <blockquote>{expression.example}</blockquote>
-        <div className="nuance"><span>NUANCE</span><p>{expression.explanation}</p></div>
-      </div>
+    <article className="expression-row">
+      <span>{String(index + 1).padStart(2, "0")}</span>
+      <div><strong>{expression.expression}</strong><small>{expression.japanese}</small></div>
+      <blockquote>{expression.example}</blockquote>
+      <p>{expression.explanation}</p>
     </article>
   );
 }
@@ -450,57 +570,39 @@ function ReviewScreen({ item, answer, feedback, index, total, onAnswer, onCheck,
   onNext: () => void;
   onCreate: () => void;
 }) {
-  if (!item) return <section className="app-screen section-shell empty-review"><h2>No memories yet.</h2><p>今日の英語を保存すると、ここで復習できます。</p><button className="primary-button" onClick={onCreate}>Create today&apos;s English <span>↗</span></button></section>;
-
-  const { entry, expression } = item;
-  const photo = entry.photos.find((entryPhoto) => entryPhoto.id === expression.photoId) || entry.photos[0];
-  const feedbackCopy = feedback === "correct" ? ["Correct!", "あの日の英語、ちゃんと残っています。"] : feedback === "almost" ? ["Almost!", "もう少し。綴りと語順を確認しよう。"] : ["Try again", "写真の瞬間を思い出してみよう。"];
-
+  if (!item) return <EmptyState title="No review yet" body="今日の英語を保存すると、明日ここで復習できます。" onCreate={onCreate} />;
+  const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
   return (
-    <section className="app-screen review-screen section-shell reveal">
-      <div className="review-topline">
-        <div><p className="kicker">A moment from {formatDay(entry.date)}</p><h2>Do you remember<br /><em>this day?</em></h2></div>
-        <div className="review-progress"><span>{Math.min(index + 1, total)}</span> / {total}<div><i style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div>
-      </div>
-
-      <div className="quiz-layout">
-        <figure className="review-photo">
-          <img src={photo?.imageUrl} alt={photo?.label || "A memory from this day"} />
-          <figcaption><span>{photo?.time}</span><strong>{photo?.label}</strong></figcaption>
-        </figure>
-        <div className="quiz-card">
-          <p className="quiz-type">JAPANESE <span>→</span> ENGLISH</p>
-          <h3>{expression.japanese}</h3>
-          <p className="quiz-context">{expression.cloze}</p>
-          <label htmlFor="quiz-answer">Your answer</label>
-          <div className={`answer-wrap ${feedback || ""}`}>
-            <input id="quiz-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") feedback ? onNext() : onCheck(); }} placeholder="Type it in English…" autoComplete="off" />
-            <span>{feedback === "correct" ? "✓" : feedback ? "!" : ""}</span>
-          </div>
-          {feedback && <div className={`feedback ${feedback}`}><strong>{feedbackCopy[0]}</strong><p>{feedbackCopy[1]}</p>{feedback !== "correct" && <small>Answer: <b>{expression.expression}</b></small>}</div>}
-          <button className="primary-button quiz-button" onClick={feedback ? onNext : onCheck} disabled={!answer.trim()}>
-            {feedback ? "Next memory" : "Check my answer"}<span>→</span>
-          </button>
+    <section className="app-screen review-page section-shell reveal">
+      <div className="page-toolbar"><div><p className="kicker">Daily recall · {Math.min(index + 1, total)} of {total}</p><h1>Review yesterday</h1><p>写真の記憶から、英語を思い出そう。</p></div><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div>
+      <div className="review-workspace">
+        <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {photo?.time}</span><strong>{photo?.label}</strong></figcaption></figure>
+        <div className="review-question">
+          <span className="question-type">JAPANESE → ENGLISH</span>
+          <h2>{item.expression.japanese}</h2>
+          <p>{item.expression.cloze}</p>
+          <label htmlFor="review-answer">Your answer</label>
+          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") feedback ? onNext() : onCheck(); }} placeholder="Type it in English…" autoComplete="off" />
+          {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.expression.expression}</b><br />{item.expression.example}</p></div>}
+          <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? "Next question" : "Check answer"}<span>→</span></button>
         </div>
       </div>
     </section>
   );
 }
 
-function HistoryScreen({ entries, onOpen }: { entries: DailyEntry[]; onOpen: (entry: DailyEntry) => void }) {
+function HistoryScreen({ entries, onOpen, onCreate }: { entries: DailyEntry[]; onOpen: (entry: DailyEntry) => void; onCreate: () => void }) {
+  if (!entries.length) return <EmptyState title="No days saved yet" body="今日の写真から、最初の英語を作ってみましょう。" onCreate={onCreate} />;
   return (
-    <section className="app-screen section-shell reveal">
-      <div className="screen-intro history-intro">
-        <div><p className="kicker">Your English archive</p><h2>Past days,<br /><em>kept close.</em></h2></div>
-        <p>写真といっしょに残るから、<br />表現の奥にある出来事まで思い出せる。</p>
-      </div>
-      <div className="history-grid">
+    <section className="app-screen history-page section-shell reveal">
+      <div className="page-toolbar"><div><p className="kicker">Your English archive</p><h1>Past days</h1><p>写真と英語が、あなたの記憶として残ります。</p></div><button className="secondary-action" type="button" onClick={onCreate}>+ Create today</button></div>
+      <div className="history-list">
         {entries.map((entry) => (
-          <button className="history-entry" key={entry.id} onClick={() => onOpen(entry)}>
-            <div className="history-collage">
-              {entry.photos.slice(0, 3).map((photo) => <img src={photo.imageUrl} alt="" key={photo.id} />)}
-            </div>
-            <div className="history-info"><div><span>{formatDay(entry.date)}</span><strong>{entry.expressions[0]?.example}</strong></div><span className="history-count">{entry.expressions.length} phrases ↗</span></div>
+          <button className="history-row" type="button" key={entry.id} onClick={() => onOpen(entry)}>
+            <div className="history-date"><strong>{new Date(`${entry.date}T12:00:00`).getDate()}</strong><span>{new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(`${entry.date}T12:00:00`))}</span></div>
+            <div className="history-thumbs">{entry.photos.slice(0, 4).map((photo) => <img src={photo.imageUrl} alt="" key={photo.id} />)}</div>
+            <div className="history-copy"><span>{formatDay(entry.date)}</span><strong>{entry.diaryEnglish}</strong><small>{entry.expressions.length} expressions</small></div>
+            <b>↗</b>
           </button>
         ))}
       </div>
@@ -508,23 +610,26 @@ function HistoryScreen({ entries, onOpen }: { entries: DailyEntry[]; onOpen: (en
   );
 }
 
-function MobileNav({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
-  return <nav className="mobile-nav" aria-label="Mobile navigation">
-    {([["home", "○", "Home"], ["today", "✶", "Today"], ["create", "+", "Create"], ["review", "↻", "Review"], ["history", "☷", "Past"]] as const).map(([target, icon, label]) => (
-      <button
-        type="button"
-        className={screen === target ? "active" : ""}
-        aria-current={screen === target ? "page" : undefined}
-        aria-label={label}
-        key={target}
-        onClick={() => onNavigate(target)}
-      >
-        <span aria-hidden="true">{icon}</span><small>{label}</small>
-      </button>
-    ))}
-  </nav>;
+function EmptyState({ title, body, onCreate }: { title: string; body: string; onCreate: () => void }) {
+  return <section className="app-screen empty-page section-shell"><span>✶</span><h1>{title}</h1><p>{body}</p><button type="button" onClick={onCreate}>Add today&apos;s photos <b>→</b></button></section>;
 }
 
-function Footer() {
-  return <footer><div className="section-shell"><div className="brand"><span className="brand-mark">D</span><span>Daily English Lens</span></div><p>Traditional apps teach someone else&apos;s words.<br />This one starts with <em>your life.</em></p><span>© 2026 · Prototype</span></div></footer>;
+function ConceptSection() {
+  return (
+    <section className="concept-section">
+      <div className="section-shell">
+        <div className="concept-copy"><p className="section-eyebrow">WHY IT WORKS</p><h2>Your life is<br />the lesson.</h2><p>Traditional apps teach someone else&apos;s words.<br />This one starts with <em>your life.</em></p></div>
+        <div className="life-loop" aria-label="Life to English learning loop">
+          {[["Life", "写真と出来事"], ["English", "使える表現"], ["Memory", "自分の記憶"], ["Review", "翌日の復習"]].map(([title, caption], index) => (
+            <div key={title}><span>{String(index + 1).padStart(2, "0")}</span><strong>{title}</strong><small>{caption}</small>{index < 3 && <b>→</b>}</div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MobileNav({ screen, onNavigate, onCreate }: { screen: Screen; onNavigate: (screen: Screen) => void; onCreate: () => void }) {
+  const items: Array<[Screen, string, string]> = [["home", "○", "Create"], ["today", "✶", "Today"], ["review", "↻", "Review"], ["history", "☷", "Past"]];
+  return <nav className="mobile-nav" aria-label="Mobile navigation">{items.map(([target, icon, label]) => <button type="button" key={target} className={screen === target ? "active" : ""} aria-current={screen === target ? "page" : undefined} onClick={target === "home" ? onCreate : () => onNavigate(target)}><span aria-hidden="true">{icon}</span><small>{label}</small></button>)}</nav>;
 }

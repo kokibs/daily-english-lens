@@ -22,7 +22,14 @@ export type DailyEntry = {
   photos: PhotoEntry[];
   diaryEnglish: string;
   diaryJapanese: string;
+  moments: MomentSentence[];
   expressions: Expression[];
+};
+
+export type MomentSentence = {
+  photoId: string;
+  english: string;
+  japanese: string;
 };
 
 export const SAMPLE_PHOTOS: PhotoEntry[] = [
@@ -64,7 +71,12 @@ export const SAMPLE_PHOTOS: PhotoEntry[] = [
 ];
 
 function dateOnly(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 export function createSampleDailyEntry(date = new Date()): DailyEntry {
@@ -73,6 +85,13 @@ export function createSampleDailyEntry(date = new Date()): DailyEntry {
 
 function buildEntry(photos: PhotoEntry[], date: string): DailyEntry {
   const photoAt = (index: number) => photos[index]?.id ?? photos[0]?.id;
+  const momentTemplates = [
+    { english: "The train was packed this morning.", japanese: "今朝の電車はとても混んでいた。" },
+    { english: "I grabbed lunch with my friends.", japanese: "友達とさっと昼食を食べた。" },
+    { english: "I stayed behind for a quick chat after class.", japanese: "放課後、少し残って友達と話した。" },
+    { english: "I was worn out after badminton practice.", japanese: "バドミントンの練習後はくたくただった。" },
+    { english: "I got soaked on my way home.", japanese: "帰り道でびしょ濡れになった。" },
+  ];
 
   return {
     id: `day-${date}`,
@@ -82,6 +101,13 @@ function buildEntry(photos: PhotoEntry[], date: string): DailyEntry {
       "Today I took a packed train to school. I grabbed lunch with my friends and stayed behind for a quick chat after class. Badminton practice completely wore me out. Then I got caught in the rain on my way home and arrived soaking wet.",
     diaryJapanese:
       "今日は満員電車で学校に行きました。友達とさっと昼食をとり、放課後は少し教室に残っておしゃべりしました。バドミントンの練習ですっかり疲れ、帰り道では雨に降られてびしょ濡れで家に着きました。",
+    moments: photos.map((photo, index) => ({
+      photoId: photo.id,
+      ...(momentTemplates[index] ?? {
+        english: photo.note ? "This moment became part of my day." : "I wanted to remember this moment.",
+        japanese: photo.note ? "この瞬間も今日の出来事のひとつになった。" : "この瞬間を覚えておきたいと思った。",
+      }),
+    })),
     expressions: [
       {
         id: "packed",

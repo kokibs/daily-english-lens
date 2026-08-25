@@ -20,7 +20,9 @@ test("renders the Daily English Lens product experience", async () => {
   const html = await response.text();
   assert.match(html, /Daily English Lens/);
   assert.match(html, /Turn your day/);
-  assert.match(html, /Create today/);
+  assert.match(html, /Add today/);
+  assert.match(html, /Generate today/);
+  assert.match(html, /Past days/);
   assert.match(html, /Mobile navigation/);
   assert.match(html, /width=device-width, initial-scale=1/);
   assert.doesNotMatch(html, /codex-preview|Building your site|react-loading-skeleton/i);
@@ -31,5 +33,5 @@ test("emits product-specific social metadata", async () => {
   const html = await response.text();
   assert.match(html, /og:title/);
   assert.match(html, /Daily English Lens/);
-  assert.match(html, /\/og\.png/);
+  assert.match(html, /\/og-dashboard\.png/);
 });

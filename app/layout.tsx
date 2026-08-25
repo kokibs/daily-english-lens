@@ -36,13 +36,13 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       type: "website",
-      images: [{ url: `${origin}/og.png`, width: 1744, height: 909, alt: "Daily English Lens — Turn your day into English" }],
+      images: [{ url: `${origin}/og-dashboard.png`, width: 1744, height: 909, alt: "Daily English Lens daily photo-to-English dashboard" }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [`${origin}/og.png`],
+      images: [`${origin}/og-dashboard.png`],
     },
   };
 }
