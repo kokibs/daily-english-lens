@@ -510,7 +510,18 @@ function HistoryScreen({ entries, onOpen }: { entries: DailyEntry[]; onOpen: (en
 
 function MobileNav({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
   return <nav className="mobile-nav" aria-label="Mobile navigation">
-    {([["home", "○", "Home"], ["today", "✶", "Today"], ["create", "+", "Create"], ["review", "↻", "Review"], ["history", "☷", "Past"]] as const).map(([target, icon, label]) => <button className={screen === target ? "active" : ""} key={target} onClick={() => onNavigate(target)}><span>{icon}</span><small>{label}</small></button>)}
+    {([["home", "○", "Home"], ["today", "✶", "Today"], ["create", "+", "Create"], ["review", "↻", "Review"], ["history", "☷", "Past"]] as const).map(([target, icon, label]) => (
+      <button
+        type="button"
+        className={screen === target ? "active" : ""}
+        aria-current={screen === target ? "page" : undefined}
+        aria-label={label}
+        key={target}
+        onClick={() => onNavigate(target)}
+      >
+        <span aria-hidden="true">{icon}</span><small>{label}</small>
+      </button>
+    ))}
   </nav>;
 }
 

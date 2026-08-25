@@ -21,6 +21,8 @@ test("renders the Daily English Lens product experience", async () => {
   assert.match(html, /Daily English Lens/);
   assert.match(html, /Turn your day/);
   assert.match(html, /Create today/);
+  assert.match(html, /Mobile navigation/);
+  assert.match(html, /width=device-width, initial-scale=1/);
   assert.doesNotMatch(html, /codex-preview|Building your site|react-loading-skeleton/i);
 });
 
