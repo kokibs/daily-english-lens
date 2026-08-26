@@ -19,14 +19,14 @@ The core loop is:
 
 Most learners know many isolated words but struggle to say what happened to them today. Daily English Lens starts with a question that is easier and more personal: “What would you tell a friend about this moment?”
 
-The prototype is designed to make that idea understandable in the first few seconds of a contest demo. It ships with a complete sample day and does not need an AI key.
+The prototype is designed to make that idea understandable in the first few seconds of a contest demo. It starts empty, uses only the photos a user adds, and does not need an AI key.
 
 ## Main features
 
 - Add, remove, reorder, and annotate photos directly from the home dashboard
 - Upload multiple photos with drag-and-drop or a file picker
-- Generate a short bilingual diary through a replaceable mock AI function
-- Learn five conversational expressions tied back to individual photos
+- Generate a short bilingual diary from photo notes and filenames through a replaceable mock AI function
+- Learn up to six conversational expressions tied back to individual photos
 - Save daily entries to `localStorage`
 - See each photo paired with the English sentence it generated
 - Answer a one-question review directly on Home, or open the full review flow
@@ -58,7 +58,7 @@ The AI boundary lives in `lib/daily-english.ts`:
 generateDailyEnglish(photos: PhotoEntry[]): Promise<DailyEntry>
 ```
 
-It currently returns a deterministic mock after a short delay. To connect a Vision-capable model:
+It currently derives deterministic output from each photo's note and filename after a short delay. No tutorial day or fixed tutorial diary is injected. To connect a Vision-capable model:
 
 1. Keep the existing `DailyEntry` return type.
 2. Move the model call to a server-side route or server action so the API key never reaches the browser.

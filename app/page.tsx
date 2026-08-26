@@ -1,13 +1,14 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import {
-  createSampleDailyEntry,
+  createDailyEntryFromPhotos,
   DailyEntry,
   Expression,
   generateDailyEnglish,
+  hasLegacyTutorialOutput,
+  isLegacyTutorialEntry,
   PhotoEntry,
-  SAMPLE_PHOTOS,
 } from "../lib/daily-english";
 
 type Screen = "home" | "today" | "review" | "history";
@@ -43,39 +44,63 @@ function distance(a: string, b: string) {
   return matrix[b.length][a.length];
 }
 
-function sampleYesterday() {
-  const date = new Date();
-  date.setDate(date.getDate() - 1);
-  return createSampleDailyEntry(date);
+async function optimizedImageUrl(file: File) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 1200;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is not available");
+    context.fillStyle = "#f7f7f1";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } catch {
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
 }
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [photos, setPhotos] = useState<PhotoEntry[]>(SAMPLE_PHOTOS.map((photo) => ({ ...photo })));
-  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(SAMPLE_PHOTOS[0].id);
+  const [photos, setPhotos] = useState<PhotoEntry[]>([]);
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [draggedPhotoId, setDraggedPhotoId] = useState<string | null>(null);
-  const [activeEntry, setActiveEntry] = useState<DailyEntry>(() => createSampleDailyEntry());
+  const [activeEntry, setActiveEntry] = useState<DailyEntry | null>(null);
   const [savedEntries, setSavedEntries] = useState<DailyEntry[]>([]);
   const [generating, setGenerating] = useState(false);
   const [fileDragging, setFileDragging] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
-  const [reviewIndex, setReviewIndex] = useState(4);
+  const [reviewIndex, setReviewIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<Feedback>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let migrated: DailyEntry[] = [];
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) setSavedEntries(JSON.parse(stored));
-      else {
-        const starter = [sampleYesterday()];
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(starter));
-        setSavedEntries(starter);
+      if (stored) {
+        const parsed = JSON.parse(stored) as DailyEntry[];
+        migrated = (Array.isArray(parsed) ? parsed : [])
+          .filter((entry) => !isLegacyTutorialEntry(entry))
+          .map((entry) => hasLegacyTutorialOutput(entry) && entry.photos?.length
+            ? createDailyEntryFromPhotos(entry.photos, entry.date)
+            : entry);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
       }
     } catch {
-      setSavedEntries([sampleYesterday()]);
+      migrated = [];
     }
+    const timer = window.setTimeout(() => setSavedEntries(migrated), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const reviewItems = useMemo(
@@ -98,17 +123,16 @@ export default function Home() {
 
   async function addFiles(files: FileList | File[]) {
     const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
-    const next = await Promise.all(images.map((file, index) => new Promise<PhotoEntry>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve({
+    const next = await Promise.all(images.map(async (file, index): Promise<PhotoEntry> => {
+      const imageUrl = await optimizedImageUrl(file);
+      return {
         id: `upload-${Date.now()}-${index}`,
-        imageUrl: String(reader.result),
+        imageUrl,
         note: "",
         label: file.name.replace(/\.[^.]+$/, ""),
         time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(file.lastModified)),
-      });
-      reader.readAsDataURL(file);
-    })));
+      };
+    }));
     if (next.length) setSelectedPhotoId(next[0].id);
     setPhotos((current) => [...current, ...next]);
   }
@@ -167,20 +191,14 @@ export default function Home() {
   }
 
   function saveToday() {
+    if (!activeEntry) return;
     const next = [activeEntry, ...savedEntries.filter((entry) => entry.id !== activeEntry.id)];
     setSavedEntries(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
-      const compact = next.map((entry) => ({
-        ...entry,
-        photos: entry.photos.map((photo, index) => ({
-          ...photo,
-          imageUrl: photo.imageUrl.startsWith("data:") ? SAMPLE_PHOTOS[index % SAMPLE_PHOTOS.length].imageUrl : photo.imageUrl,
-        })),
-      }));
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(compact));
-      setSavedEntries(compact);
+      // Keep the generated day in this session. Uploaded photos must never be
+      // replaced by tutorial assets when browser storage is full.
     }
     setSavedNotice(true);
   }
@@ -216,8 +234,7 @@ export default function Home() {
           reviewItem={currentReview}
           answer={answer}
           feedback={feedback}
-          fileInput={fileInput}
-          onPick={() => fileInput.current?.click()}
+          onPick={() => document.getElementById("photo-upload-input")?.click()}
           onFileInput={handleFileInput}
           onFileDrag={setFileDragging}
           onFileDrop={handleFileDrop}
@@ -228,7 +245,6 @@ export default function Home() {
           onDropPhoto={reorderPhoto}
           onNote={(id, note) => setPhotos((items) => items.map((item) => item.id === id ? { ...item, note } : item))}
           onClear={() => { setPhotos([]); setSelectedPhotoId(null); }}
-          onSample={() => { setPhotos(SAMPLE_PHOTOS.map((photo) => ({ ...photo }))); setSelectedPhotoId(SAMPLE_PHOTOS[0].id); }}
           onGenerate={() => void createEnglish()}
           onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
           onCheck={checkAnswer}
@@ -240,7 +256,9 @@ export default function Home() {
       )}
 
       {screen === "today" && (
-        <TodayScreen entry={activeEntry} saved={savedNotice} onSave={saveToday} onReview={() => navigate("review")} onCreate={goToCreate} />
+        activeEntry
+          ? <TodayScreen entry={activeEntry} saved={savedNotice} onSave={saveToday} onReview={() => navigate("review")} onCreate={goToCreate} />
+          : <EmptyState title="No English yet" body="今日の写真を追加すると、ここに英語が表示されます。" onCreate={goToCreate} />
       )}
 
       {screen === "review" && (
@@ -281,7 +299,7 @@ function Header({ screen, reviewCount, onNavigate, onCreate }: {
         <div className="desktop-nav">
           <button className={screen === "home" ? "active" : ""} onClick={() => onNavigate("home")}>Home</button>
           <button className={screen === "today" ? "active" : ""} onClick={() => onNavigate("today")}>Today</button>
-          <button className={screen === "review" ? "active" : ""} onClick={() => onNavigate("review")}>Review <span className="count-badge">{reviewCount || 5}</span></button>
+          <button className={screen === "review" ? "active" : ""} onClick={() => onNavigate("review")}>Review {reviewCount > 0 && <span className="count-badge">{reviewCount}</span>}</button>
           <button className={screen === "history" ? "active" : ""} onClick={() => onNavigate("history")}>Past days</button>
         </div>
         <button className="header-create" type="button" onClick={onCreate}><span>+</span> Add photos</button>
@@ -300,7 +318,6 @@ function Dashboard(props: {
   reviewItem?: { entry: DailyEntry; expression: Expression };
   answer: string;
   feedback: Feedback;
-  fileInput: React.RefObject<HTMLInputElement | null>;
   onPick: () => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onFileDrag: (dragging: boolean) => void;
@@ -312,7 +329,6 @@ function Dashboard(props: {
   onDropPhoto: (id: string) => void;
   onNote: (id: string, note: string) => void;
   onClear: () => void;
-  onSample: () => void;
   onGenerate: () => void;
   onAnswer: (answer: string) => void;
   onCheck: () => void;
@@ -343,14 +359,13 @@ function Dashboard(props: {
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) props.onFileDrag(false); }}
           onDrop={props.onFileDrop}
         >
-          <input ref={props.fileInput} type="file" accept="image/*" multiple hidden onChange={props.onFileInput} />
+          <input id="photo-upload-input" type="file" accept="image/*" multiple hidden onChange={props.onFileInput} />
           <div className="workspace-head">
             <div className="section-title-row">
               <span className="step-number primary">1</span>
               <div><p className="section-eyebrow">PRIMARY · TODAY</p><h2>Add today&apos;s photos</h2><small>今日を思い出せる写真を、3〜6枚選びましょう。</small></div>
             </div>
             <div className="workspace-actions">
-              <button type="button" onClick={props.onSample}>Sample day</button>
               {props.photos.length > 0 && <button type="button" className="danger-link" onClick={props.onClear}>Clear</button>}
             </div>
           </div>
@@ -389,7 +404,7 @@ function Dashboard(props: {
                     </div>
                     <label htmlFor={`note-${selected.id}`}>What happened? <span>optional</span></label>
                     <textarea id={`note-${selected.id}`} value={selected.note || ""} onChange={(event) => props.onNote(selected.id, event.target.value)} placeholder="例：友達と急いで昼ごはんを食べた" rows={3} />
-                    <p>AIは写真の物体名ではなく、この補足から「何があったか」を優先します。</p>
+                    <p>補足とファイル名から「何があったか」を組み立てます。具体的に書くほど自分らしい英語になります。</p>
                   </div>
                 </div>
               )}
@@ -468,7 +483,7 @@ function QuickReview({ item, answer, feedback, onAnswer, onCheck, onNext, onOpen
           <label htmlFor="home-review-answer">{prompt}</label>
           <div className={`inline-answer ${feedback || ""}`}>
             {prefix && <span>{prefix}</span>}
-            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") feedback ? onNext() : onCheck(); }} placeholder="________" autoComplete="off" />
+            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="________" autoComplete="off" />
             <button type="button" onClick={feedback ? onNext : onCheck} disabled={!answer.trim()}>{feedback ? "Next" : "Check answer"}</button>
           </div>
           {feedback && (
@@ -582,7 +597,7 @@ function ReviewScreen({ item, answer, feedback, index, total, onAnswer, onCheck,
           <h2>{item.expression.japanese}</h2>
           <p>{item.expression.cloze}</p>
           <label htmlFor="review-answer">Your answer</label>
-          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") feedback ? onNext() : onCheck(); }} placeholder="Type it in English…" autoComplete="off" />
+          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type it in English…" autoComplete="off" />
           {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.expression.expression}</b><br />{item.expression.example}</p></div>}
           <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? "Next question" : "Check answer"}<span>→</span></button>
         </div>
