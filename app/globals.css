@@ -165,7 +165,12 @@ main { min-height: 100vh; }
 .inline-feedback strong { font-size: 11px; }
 .inline-feedback strong b { margin-left: 6px; font: 400 italic 15px Georgia, serif; }
 .inline-feedback small { font-size: 9px; }
-.text-link { align-self: flex-start; margin-top: 13px; border: 0; background: transparent; color: var(--green); padding: 0; font-size: 10px; font-weight: 800; }
+.quiz-footer { margin-top: 13px; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.text-link { border: 0; background: transparent; color: var(--green); padding: 0; font-size: 10px; font-weight: 800; }
+.sound-toggle { min-height: 34px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 99px; background: #f5f6f0; color: var(--muted); padding: 4px 10px 4px 5px; font-size: 9px; font-weight: 800; }
+.sound-toggle:hover { border-color: #aeb9ae; color: var(--green); }
+.sound-toggle span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--green); color: var(--lime); font-size: 12px; }
+.sound-toggle[aria-pressed="false"] span { background: #dde2da; color: #6f7c76; }
 
 .recent-section { margin-top: 48px; }
 .recent-head { display: flex; justify-content: space-between; align-items: end; margin-bottom: 13px; }
@@ -211,10 +216,15 @@ main { min-height: 100vh; }
 .diary-summary { display: grid; grid-template-columns: 120px 1fr; overflow: hidden; border-radius: 20px; background: var(--green); color: white; }
 .diary-summary > div:first-child { padding: 24px; border-right: 1px solid rgba(255,255,255,.14); display: flex; flex-direction: column; justify-content: space-between; }
 .diary-summary > div:first-child span { color: #9ab0a7; font-size: 8px; font-weight: 850; letter-spacing: .12em; }
-.diary-summary > div:first-child strong { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--lime); color: var(--green); }
+.diary-audio { width: 72px; min-height: 42px; display: flex; align-items: center; gap: 7px; border: 1px solid rgba(255,255,255,.18); border-radius: 99px; background: rgba(255,255,255,.08); color: white; padding: 4px 8px 4px 5px; }
+.diary-audio:hover { background: rgba(255,255,255,.14); }
+.diary-audio b { flex: 0 0 30px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--lime); color: var(--green); font-size: 10px; }
+.diary-audio small { color: white; font-size: 8px; font-weight: 800; letter-spacing: .02em; }
+.diary-audio.playing b { animation: audio-pulse 1.2s ease-in-out infinite; }
+@keyframes audio-pulse { 50% { box-shadow: 0 0 0 5px rgba(217,242,79,.15); transform: scale(.94); } }
 .diary-summary > div:last-child { padding: 32px 38px; }
 .diary-summary p { margin: 0 0 17px; font: 400 clamp(21px, 2.5vw, 29px)/1.45 Georgia, serif; }
-.diary-summary small { color: #bfd0ca; font-size: 11px; line-height: 1.8; }
+.diary-summary > div:last-child > small { color: #bfd0ca; font-size: 11px; line-height: 1.8; }
 .moment-section, .expression-section { margin-top: 64px; }
 .moment-story-list { display: flex; flex-direction: column; gap: 12px; }
 .moment-story { min-height: 280px; display: grid; grid-template-columns: 39% 61%; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); }
@@ -248,6 +258,7 @@ main { min-height: 100vh; }
 .save-dock > button span { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; background: var(--lime); color: var(--green); }
 
 /* Full review */
+.review-tools { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 14px; }
 .review-meter { width: 180px; height: 5px; overflow: hidden; border-radius: 99px; background: #dfe3db; }
 .review-meter span { display: block; height: 100%; border-radius: inherit; background: var(--lime); }
 .review-workspace { min-height: 570px; display: grid; grid-template-columns: 43% 57%; overflow: hidden; border: 1px solid var(--line-dark); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow); }
@@ -370,6 +381,7 @@ main { min-height: 100vh; }
   .inline-answer input { height: 52px; border: 1px solid var(--line-dark); border-left: 0; border-radius: 0 11px 11px 0; background: white; font-size: 20px; }
   .inline-answer button { flex: 0 0 100%; min-height: 48px; margin-top: 8px; border-radius: 10px; }
   .inline-answer:focus-within { box-shadow: none; }
+  .quiz-footer { align-items: center; }
 
   .recent-section { margin-top: 39px; }
   .recent-row { grid-template-columns: 108px 1fr 18px; gap: 13px; padding: 12px; }
@@ -394,6 +406,7 @@ main { min-height: 100vh; }
   .content-heading > p { margin-top: 10px; }
   .diary-summary { grid-template-columns: 1fr; border-radius: 17px; }
   .diary-summary > div:first-child { min-height: 61px; padding: 14px 17px; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.14); flex-direction: row; align-items: center; }
+  .diary-audio { width: 88px; }
   .diary-summary > div:last-child { padding: 24px 20px 27px; }
   .diary-summary p { font-size: 22px; }
   .moment-section, .expression-section { margin-top: 48px; }
@@ -410,7 +423,9 @@ main { min-height: 100vh; }
   .save-dock > div { padding: 4px 3px 11px; }
   .save-dock > button { width: 100%; min-width: 0; }
 
-  .review-meter { width: 100%; margin-top: 18px; }
+  .review-tools { width: 100%; margin-top: 18px; align-items: stretch; }
+  .review-tools .sound-toggle { align-self: flex-end; }
+  .review-meter { width: 100%; }
   .review-workspace { min-height: 0; grid-template-columns: 1fr; border-radius: 18px; }
   .review-workspace figure { min-height: 0; aspect-ratio: 4 / 3; }
   .review-question { padding: 29px 20px 23px; }

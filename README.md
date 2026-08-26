@@ -29,7 +29,9 @@ The prototype is designed to make that idea understandable in the first few seco
 - Learn up to six conversational expressions tied back to individual photos
 - Save daily entries to `localStorage`
 - See each photo paired with the English sentence it generated
+- Listen to the generated English diary with the device's built-in English voice
 - Answer a one-question review directly on Home, or open the full review flow
+- Hear a lightweight success chime after a correct review answer, with a persistent sound toggle
 - Browse saved days in a visual photo archive
 - Responsive layouts for phones, tablets, and desktop screens
 

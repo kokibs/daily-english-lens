@@ -15,6 +15,33 @@ type Screen = "home" | "today" | "review" | "history";
 type Feedback = "correct" | "almost" | "wrong" | null;
 
 const STORAGE_KEY = "daily-english-lens:entries";
+const SOUND_KEY = "daily-english-lens:quiz-sound";
+
+function playSuccessChime() {
+  const AudioContextClass = window.AudioContext || (window as typeof window & {
+    webkitAudioContext?: typeof AudioContext;
+  }).webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  const context = new AudioContextClass();
+  void context.resume();
+  const start = context.currentTime;
+  [659.25, 783.99, 987.77].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const noteStart = start + index * 0.085;
+    oscillator.type = index === 2 ? "sine" : "triangle";
+    oscillator.frequency.setValueAtTime(frequency, noteStart);
+    gain.gain.setValueAtTime(0.0001, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.12, noteStart + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.24);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteStart + 0.25);
+  });
+  window.setTimeout(() => void context.close(), 700);
+}
 
 function formatDay(date: string, long = true) {
   return new Intl.DateTimeFormat("en-US", long
@@ -82,9 +109,11 @@ export default function Home() {
   const [reviewIndex, setReviewIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const [quizSoundEnabled, setQuizSoundEnabled] = useState(true);
 
   useEffect(() => {
     let migrated: DailyEntry[] = [];
+    let soundEnabled = true;
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -96,10 +125,14 @@ export default function Home() {
             : entry);
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
       }
+      soundEnabled = window.localStorage.getItem(SOUND_KEY) !== "off";
     } catch {
       migrated = [];
     }
-    const timer = window.setTimeout(() => setSavedEntries(migrated), 0);
+    const timer = window.setTimeout(() => {
+      setSavedEntries(migrated);
+      setQuizSoundEnabled(soundEnabled);
+    }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -208,9 +241,26 @@ export default function Home() {
     const expected = normalizeAnswer(currentReview.expression.expression);
     const suffix = expected.split(" ").slice(1).join(" ");
     const actual = normalizeAnswer(answer);
-    if (actual === expected || (suffix && actual === suffix)) setFeedback("correct");
-    else if (distance(actual, expected) <= 2 || (suffix && distance(actual, suffix) <= 2) || expected.includes(actual)) setFeedback("almost");
-    else setFeedback("wrong");
+    if (actual === expected || (suffix && actual === suffix)) {
+      setFeedback("correct");
+      if (quizSoundEnabled) playSuccessChime();
+    } else if (distance(actual, expected) <= 2 || (suffix && distance(actual, suffix) <= 2) || expected.includes(actual)) {
+      setFeedback("almost");
+    } else {
+      setFeedback("wrong");
+    }
+  }
+
+  function toggleQuizSound() {
+    setQuizSoundEnabled((enabled) => {
+      const next = !enabled;
+      try {
+        window.localStorage.setItem(SOUND_KEY, next ? "on" : "off");
+      } catch {
+        // Sound preference remains active for this session.
+      }
+      return next;
+    });
   }
 
   function nextQuestion() {
@@ -234,6 +284,7 @@ export default function Home() {
           reviewItem={currentReview}
           answer={answer}
           feedback={feedback}
+          soundEnabled={quizSoundEnabled}
           onPick={() => document.getElementById("photo-upload-input")?.click()}
           onFileInput={handleFileInput}
           onFileDrag={setFileDragging}
@@ -249,6 +300,7 @@ export default function Home() {
           onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
           onCheck={checkAnswer}
           onNext={nextQuestion}
+          onToggleSound={toggleQuizSound}
           onOpenReview={() => navigate("review")}
           onOpenHistory={() => navigate("history")}
           onOpenEntry={(entry) => { setActiveEntry(entry); navigate("today"); }}
@@ -257,7 +309,7 @@ export default function Home() {
 
       {screen === "today" && (
         activeEntry
-          ? <TodayScreen entry={activeEntry} saved={savedNotice} onSave={saveToday} onReview={() => navigate("review")} onCreate={goToCreate} />
+          ? <TodayScreen key={activeEntry.id} entry={activeEntry} saved={savedNotice} onSave={saveToday} onReview={() => navigate("review")} onCreate={goToCreate} />
           : <EmptyState title="No English yet" body="今日の写真を追加すると、ここに英語が表示されます。" onCreate={goToCreate} />
       )}
 
@@ -268,9 +320,11 @@ export default function Home() {
           feedback={feedback}
           index={reviewIndex}
           total={reviewItems.length}
+          soundEnabled={quizSoundEnabled}
           onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
           onCheck={checkAnswer}
           onNext={nextQuestion}
+          onToggleSound={toggleQuizSound}
           onCreate={goToCreate}
         />
       )}
@@ -318,6 +372,7 @@ function Dashboard(props: {
   reviewItem?: { entry: DailyEntry; expression: Expression };
   answer: string;
   feedback: Feedback;
+  soundEnabled: boolean;
   onPick: () => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onFileDrag: (dragging: boolean) => void;
@@ -333,6 +388,7 @@ function Dashboard(props: {
   onAnswer: (answer: string) => void;
   onCheck: () => void;
   onNext: () => void;
+  onToggleSound: () => void;
   onOpenReview: () => void;
   onOpenHistory: () => void;
   onOpenEntry: (entry: DailyEntry) => void;
@@ -427,9 +483,11 @@ function Dashboard(props: {
           item={props.reviewItem}
           answer={props.answer}
           feedback={props.feedback}
+          soundEnabled={props.soundEnabled}
           onAnswer={props.onAnswer}
           onCheck={props.onCheck}
           onNext={props.onNext}
+          onToggleSound={props.onToggleSound}
           onOpenReview={props.onOpenReview}
         />
 
@@ -452,13 +510,15 @@ function ProgressRail({ photoCount }: { photoCount: number }) {
   );
 }
 
-function QuickReview({ item, answer, feedback, onAnswer, onCheck, onNext, onOpenReview }: {
+function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onOpenReview }: {
   item?: { entry: DailyEntry; expression: Expression };
   answer: string;
   feedback: Feedback;
+  soundEnabled: boolean;
   onAnswer: (answer: string) => void;
   onCheck: () => void;
   onNext: () => void;
+  onToggleSound: () => void;
   onOpenReview: () => void;
 }) {
   if (!item) return null;
@@ -492,7 +552,10 @@ function QuickReview({ item, answer, feedback, onAnswer, onCheck, onNext, onOpen
               <p><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"} <b>{item.expression.expression}</b></strong><small>{item.expression.example}</small></p>
             </div>
           )}
-          <button className="text-link" type="button" onClick={onOpenReview}>Open full review →</button>
+          <div className="quiz-footer">
+            <button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button>
+            <button className="text-link" type="button" onClick={onOpenReview}>Open full review →</button>
+          </div>
         </div>
       </div>
     </section>
@@ -518,12 +581,43 @@ function RecentDays({ entries, onOpen, onOpenHistory }: { entries: DailyEntry[];
 }
 
 function TodayScreen({ entry, saved, onSave, onReview, onCreate }: { entry: DailyEntry; saved: boolean; onSave: () => void; onReview: () => void; onCreate: () => void }) {
+  const [speaking, setSpeaking] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  function toggleNarration() {
+    if (!("speechSynthesis" in window)) return;
+    const synthesizer = window.speechSynthesis;
+    if (speaking || synthesizer.speaking) {
+      synthesizer.cancel();
+      setSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(entry.diaryEnglish);
+    const voice = synthesizer.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith("en-us"))
+      ?? synthesizer.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith("en"));
+    if (voice) utterance.voice = voice;
+    utterance.lang = "en-US";
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    synthesizer.cancel();
+    synthesizer.speak(utterance);
+    setSpeaking(true);
+  }
+
   return (
     <section className="app-screen result-screen section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">{formatDay(entry.date)} · Generated</p><h1>Your day in English</h1><p>写真を見ると、その日の英語が思い出せる。</p></div><button className="secondary-action" type="button" onClick={onCreate}>+ Add another day</button></div>
 
       <article className="diary-summary">
-        <div><span>DAY SUMMARY</span><strong>✶</strong></div>
+        <div><span>DAY SUMMARY</span><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button></div>
         <div><p>{entry.diaryEnglish}</p><small>{entry.diaryJapanese}</small></div>
       </article>
 
@@ -574,22 +668,24 @@ function ExpressionRow({ expression, index }: { expression: Expression; index: n
   );
 }
 
-function ReviewScreen({ item, answer, feedback, index, total, onAnswer, onCheck, onNext, onCreate }: {
+function ReviewScreen({ item, answer, feedback, index, total, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onCreate }: {
   item?: { entry: DailyEntry; expression: Expression };
   answer: string;
   feedback: Feedback;
   index: number;
   total: number;
+  soundEnabled: boolean;
   onAnswer: (answer: string) => void;
   onCheck: () => void;
   onNext: () => void;
+  onToggleSound: () => void;
   onCreate: () => void;
 }) {
   if (!item) return <EmptyState title="No review yet" body="今日の英語を保存すると、明日ここで復習できます。" onCreate={onCreate} />;
   const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
   return (
     <section className="app-screen review-page section-shell reveal">
-      <div className="page-toolbar"><div><p className="kicker">Daily recall · {Math.min(index + 1, total)} of {total}</p><h1>Review yesterday</h1><p>写真の記憶から、英語を思い出そう。</p></div><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div>
+      <div className="page-toolbar"><div><p className="kicker">Daily recall · {Math.min(index + 1, total)} of {total}</p><h1>Review yesterday</h1><p>写真の記憶から、英語を思い出そう。</p></div><div className="review-tools"><button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div></div>
       <div className="review-workspace">
         <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {photo?.time}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
