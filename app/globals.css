@@ -131,6 +131,12 @@ main { min-height: 100vh; }
 .generate-button:disabled { opacity: .42; box-shadow: none; }
 .button-step { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: rgba(255, 255, 255, .12); color: var(--lime); font-size: 10px; }
 .generate-button > b { margin-left: auto; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--lime); color: var(--green); font-size: 17px; }
+.generation-error { margin-top: 14px; min-height: 58px; display: flex; align-items: center; gap: 11px; border: 1px solid #dfc1ba; border-radius: 12px; background: #fbefec; color: #7f4b43; padding: 9px 10px; }
+.generation-error > span { flex: 0 0 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; background: white; font-weight: 850; }
+.generation-error p { flex: 1; margin: 0; display: flex; flex-direction: column; gap: 3px; }
+.generation-error strong { font-size: 10px; }
+.generation-error small { font-size: 9px; line-height: 1.5; }
+.generation-error button { flex: 0 0 auto; min-height: 36px; border: 0; border-radius: 9px; background: var(--green); color: white; padding: 0 13px; font-size: 9px; font-weight: 800; }
 
 /* Home review and history */
 .quick-review-section { margin-top: 46px; }
@@ -370,6 +376,9 @@ main { min-height: 100vh; }
   .workspace-footer { display: block; padding-top: 17px; }
   .readiness { margin-bottom: 14px; }
   .generate-button { position: sticky; bottom: calc(74px + env(safe-area-inset-bottom)); z-index: 25; width: 100%; min-width: 0; height: 54px; }
+  .generation-error { align-items: flex-start; flex-wrap: wrap; padding: 12px; }
+  .generation-error p { min-width: calc(100% - 45px); }
+  .generation-error button { width: 100%; margin-top: 2px; }
 
   .quick-review-section { margin-top: 38px; }
   .quick-review-card { grid-template-columns: 1fr; border-radius: 19px; }

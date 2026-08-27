@@ -104,6 +104,7 @@ export default function Home() {
   const [activeEntry, setActiveEntry] = useState<DailyEntry | null>(null);
   const [savedEntries, setSavedEntries] = useState<DailyEntry[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [fileDragging, setFileDragging] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
@@ -217,10 +218,16 @@ export default function Home() {
   async function createEnglish() {
     if (!photos.length) return;
     setGenerating(true);
-    const result = await generateDailyEnglish(photos);
-    setActiveEntry(result);
-    setGenerating(false);
-    navigate("today");
+    setGenerationError(null);
+    try {
+      const result = await generateDailyEnglish(photos);
+      setActiveEntry(result);
+      navigate("today");
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "写真を解析できませんでした。");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function saveToday() {
@@ -280,6 +287,7 @@ export default function Home() {
           draggedPhotoId={draggedPhotoId}
           fileDragging={fileDragging}
           generating={generating}
+          generationError={generationError}
           savedEntries={savedEntries}
           reviewItem={currentReview}
           answer={answer}
@@ -368,6 +376,7 @@ function Dashboard(props: {
   draggedPhotoId: string | null;
   fileDragging: boolean;
   generating: boolean;
+  generationError: string | null;
   savedEntries: DailyEntry[];
   reviewItem?: { entry: DailyEntry; expression: Expression };
   answer: string;
@@ -460,7 +469,7 @@ function Dashboard(props: {
                     </div>
                     <label htmlFor={`note-${selected.id}`}>What happened? <span>optional</span></label>
                     <textarea id={`note-${selected.id}`} value={selected.note || ""} onChange={(event) => props.onNote(selected.id, event.target.value)} placeholder="例：友達と急いで昼ごはんを食べた" rows={3} />
-                    <p>補足とファイル名から「何があったか」を組み立てます。具体的に書くほど自分らしい英語になります。</p>
+                    <p>写真そのものを解析し、この補足を「何があったか」の優先情報として英文を作ります。</p>
                   </div>
                 </div>
               )}
@@ -474,9 +483,10 @@ function Dashboard(props: {
           <div className="workspace-footer">
             <div className="readiness"><span className={props.photos.length ? "ready" : ""} /> <p><strong>{props.photos.length ? `${props.photos.length} moments ready` : "Add at least one photo"}</strong><small>Notes are optional. You can edit them above.</small></p></div>
             <button className="generate-button" type="button" disabled={!props.photos.length || props.generating} onClick={props.onGenerate}>
-              <span className="button-step">2</span><span>{props.generating ? "Reading your day…" : "Generate today's English"}</span><b>{props.generating ? "•" : "→"}</b>
+              <span className="button-step">2</span><span>{props.generating ? "Analyzing your photos…" : "Generate today's English"}</span><b>{props.generating ? "•" : "→"}</b>
             </button>
           </div>
+          {props.generationError && <div className="generation-error" role="alert"><span>!</span><p><strong>Couldn&apos;t analyze these photos.</strong><small>{props.generationError}</small></p><button type="button" onClick={props.onGenerate}>Try again</button></div>}
         </section>
 
         <QuickReview

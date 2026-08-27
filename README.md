@@ -19,13 +19,14 @@ The core loop is:
 
 Most learners know many isolated words but struggle to say what happened to them today. Daily English Lens starts with a question that is easier and more personal: “What would you tell a friend about this moment?”
 
-The prototype is designed to make that idea understandable in the first few seconds of a contest demo. It starts empty, uses only the photos a user adds, and does not need an AI key.
+The prototype is designed to make that idea understandable in the first few seconds of a contest demo. It starts empty and uses only the photos a user adds.
 
 ## Main features
 
 - Add, remove, reorder, and annotate photos directly from the home dashboard
 - Upload multiple photos with drag-and-drop or a file picker
-- Generate a short bilingual diary from photo notes and filenames through a replaceable mock AI function
+- Analyze the actual photo together with its optional note using a Vision-capable model
+- Generate a short bilingual diary grounded in each visible moment
 - Learn up to six conversational expressions tied back to individual photos
 - Save daily entries to `localStorage`
 - See each photo paired with the English sentence it generated
@@ -46,13 +47,21 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+Add a local `.env` file before generating from photos:
+
+```bash
+OPENAI_API_KEY=your_api_key
+# Optional; defaults to the cost-efficient vision model below.
+OPENAI_VISION_MODEL=gpt-5.6-luna
+```
+
 For a production build:
 
 ```bash
 npm run build
 ```
 
-## Connecting a real AI API later
+## Vision generation
 
 The AI boundary lives in `lib/daily-english.ts`:
 
@@ -60,13 +69,12 @@ The AI boundary lives in `lib/daily-english.ts`:
 generateDailyEnglish(photos: PhotoEntry[]): Promise<DailyEntry>
 ```
 
-It currently derives deterministic output from each photo's note and filename after a short delay. No tutorial day or fixed tutorial diary is injected. To connect a Vision-capable model:
+The browser sends resized photos to the same-origin `/api/generate` endpoint only when the user presses Generate. The worker calls the OpenAI Responses API with image inputs and a strict JSON schema; the API key remains server-side.
 
-1. Keep the existing `DailyEntry` return type.
-2. Move the model call to a server-side route or server action so the API key never reaches the browser.
-3. Send resized photos and their optional notes together as a sequence of moments.
-4. Instruct the model to describe plausible experiences, prioritize user notes, avoid unsupported guesses, and return 3–6 reusable conversational expressions.
-5. Validate the model response against the TypeScript shape before returning it to the UI.
+- `lib/daily-english.ts` owns the client boundary and local data model.
+- `lib/vision-generator.ts` validates requests, sends each image and note to the model, validates the structured result, and builds review cloze prompts.
+- `worker/index.ts` keeps the key in the hosted runtime and exposes the same-origin endpoint.
+- Generation errors are surfaced to the user and never silently replaced with tutorial or generic copy.
 
 The current local-storage layer is intentionally device-local for the prototype. A production version can replace it with account-based storage and an image object store without changing the core `DailyEntry` model.
 

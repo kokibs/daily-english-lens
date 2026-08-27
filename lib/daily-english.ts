@@ -43,7 +43,7 @@ type MomentDraft = {
 const LEGACY_TUTORIAL_PHOTO_IDS = new Set(["train", "lunch", "classroom", "badminton", "rain"]);
 const LEGACY_TUTORIAL_DIARY = "Today I took a packed train to school.";
 
-function dateOnly(date: Date) {
+export function dateOnly(date: Date) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -173,7 +173,7 @@ function inferMoment(photo: PhotoEntry): MomentDraft {
   };
 }
 
-function makeCloze(exampleText: string, expressionText: string) {
+export function makeCloze(exampleText: string, expressionText: string) {
   const words = expressionText.split(/\s+/);
   const blank = words.map(() => "______").join(" ");
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -232,11 +232,18 @@ export function createDailyEntryFromPhotos(photos: PhotoEntry[], date = dateOnly
 }
 
 /**
- * AI integration boundary.
- * The prototype derives content from the user's notes and filenames. Replace this
- * function with a Vision-capable model call while preserving the return type.
+ * Client boundary for the server-side Vision model. Photos are sent only when
+ * the user presses Generate; API credentials never reach the browser.
  */
 export async function generateDailyEnglish(photos: PhotoEntry[]): Promise<DailyEntry> {
-  await new Promise((resolve) => setTimeout(resolve, 850));
-  return createDailyEntryFromPhotos(photos);
+  const response = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ photos }),
+  });
+  const result = await response.json() as DailyEntry | { error?: string };
+  if (!response.ok) {
+    throw new Error("error" in result && result.error ? result.error : "写真を解析できませんでした。少し待って再試行してください。");
+  }
+  return result as DailyEntry;
 }

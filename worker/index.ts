@@ -1,10 +1,13 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { handleVisionGenerateRequest } from "../lib/vision-generator";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  OPENAI_API_KEY?: string;
+  OPENAI_VISION_MODEL?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -38,6 +41,10 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
+    }
+
+    if (url.pathname === "/api/generate") {
+      return handleVisionGenerateRequest(request, env.OPENAI_API_KEY, env.OPENAI_VISION_MODEL);
     }
 
     return handler.fetch(request, env, ctx);
