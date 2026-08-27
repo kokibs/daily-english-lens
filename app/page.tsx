@@ -1,9 +1,12 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- User-selected data URLs stay local and cannot use the Next image optimizer. */
+
 import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import {
   createDailyEntryFromPhotos,
   DailyEntry,
+  dateOnly,
   Expression,
   generateDailyEnglish,
   hasLegacyTutorialOutput,
@@ -16,6 +19,10 @@ type Feedback = "correct" | "almost" | "wrong" | null;
 
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
+const GENERATION_USAGE_KEY = "daily-english-lens:generation-usage";
+const MAX_PHOTOS = 5;
+const MAX_DAILY_GENERATIONS = 5;
+const MAX_IMAGE_DATA_URL_LENGTH = 620_000;
 
 function playSuccessChime() {
   const AudioContextClass = window.AudioContext || (window as typeof window & {
@@ -58,6 +65,33 @@ function normalizeAnswer(value: string) {
   return value.trim().toLowerCase().replace(/[.!?]/g, "").replace(/\s+/g, " ");
 }
 
+function generationUsage() {
+  const today = dateOnly(new Date());
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(GENERATION_USAGE_KEY) ?? "null") as {
+      date?: string;
+      count?: number;
+    } | null;
+    return stored?.date === today && Number.isInteger(stored.count)
+      ? { date: today, count: Math.max(0, stored.count ?? 0) }
+      : { date: today, count: 0 };
+  } catch {
+    return { date: today, count: 0 };
+  }
+}
+
+function recordGeneration() {
+  const usage = generationUsage();
+  try {
+    window.localStorage.setItem(GENERATION_USAGE_KEY, JSON.stringify({
+      date: usage.date,
+      count: usage.count + 1,
+    }));
+  } catch {
+    // The hosted API still applies its own burst limit when storage is unavailable.
+  }
+}
+
 function distance(a: string, b: string) {
   const matrix = Array.from({ length: b.length + 1 }, (_, index) => [index]);
   for (let index = 0; index <= a.length; index += 1) matrix[0][index] = index;
@@ -74,25 +108,42 @@ function distance(a: string, b: string) {
 async function optimizedImageUrl(file: File) {
   try {
     const bitmap = await createImageBitmap(file);
-    const maxSide = 1200;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Canvas is not available");
-    context.fillStyle = "#f7f7f1";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    let maxSide = 1200;
+    let quality = 0.82;
+    let imageUrl = "";
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      context.fillStyle = "#f7f7f1";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      imageUrl = canvas.toDataURL("image/jpeg", quality);
+      if (imageUrl.length <= MAX_IMAGE_DATA_URL_LENGTH) break;
+      maxSide = Math.round(maxSide * 0.84);
+      quality = Math.max(0.58, quality - 0.06);
+    }
     bitmap.close();
-    return canvas.toDataURL("image/jpeg", 0.82);
+    if (imageUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      throw new Error("画像を公開用のサイズに縮小できませんでした。");
+    }
+    return imageUrl;
   } catch {
-    return await new Promise<string>((resolve, reject) => {
+    const imageUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
     });
+    if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(imageUrl)
+      || imageUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      throw new Error("この画像を読み込めませんでした。JPGまたはPNGで試してください。");
+    }
+    return imageUrl;
   }
 }
 
@@ -157,18 +208,28 @@ export default function Home() {
 
   async function addFiles(files: FileList | File[]) {
     const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
-    const next = await Promise.all(images.map(async (file, index): Promise<PhotoEntry> => {
-      const imageUrl = await optimizedImageUrl(file);
-      return {
-        id: `upload-${Date.now()}-${index}`,
-        imageUrl,
-        note: "",
-        label: file.name.replace(/\.[^.]+$/, ""),
-        time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(file.lastModified)),
-      };
-    }));
-    if (next.length) setSelectedPhotoId(next[0].id);
-    setPhotos((current) => [...current, ...next]);
+    const remaining = Math.max(0, MAX_PHOTOS - photos.length);
+    if (!remaining) {
+      setGenerationError("写真は1日最大5枚までです。");
+      return;
+    }
+    try {
+      const next = await Promise.all(images.slice(0, remaining).map(async (file, index): Promise<PhotoEntry> => {
+        const imageUrl = await optimizedImageUrl(file);
+        return {
+          id: `upload-${Date.now()}-${index}`,
+          imageUrl,
+          note: "",
+          label: file.name.replace(/\.[^.]+$/, ""),
+          time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(file.lastModified)),
+        };
+      }));
+      if (next.length) setSelectedPhotoId(next[0].id);
+      setPhotos((current) => [...current, ...next]);
+      setGenerationError(images.length > remaining ? "写真は1日最大5枚までです。" : null);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "写真を読み込めませんでした。");
+    }
   }
 
   function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
@@ -217,10 +278,15 @@ export default function Home() {
 
   async function createEnglish() {
     if (!photos.length) return;
+    if (generationUsage().count >= MAX_DAILY_GENERATIONS) {
+      setGenerationError("今日の生成は5回までです。明日になるとまた使えます。");
+      return;
+    }
     setGenerating(true);
     setGenerationError(null);
     try {
       const result = await generateDailyEnglish(photos);
+      recordGeneration();
       setActiveEntry(result);
       navigate("today");
     } catch (error) {
@@ -428,7 +494,7 @@ function Dashboard(props: {
           <div className="workspace-head">
             <div className="section-title-row">
               <span className="step-number primary">1</span>
-              <div><p className="section-eyebrow">PRIMARY · TODAY</p><h2>Add today&apos;s photos</h2><small>今日を思い出せる写真を、3〜6枚選びましょう。</small></div>
+              <div><p className="section-eyebrow">PRIMARY · TODAY</p><h2>Add today&apos;s photos</h2><small>今日を思い出せる写真を、1〜5枚選びましょう。</small></div>
             </div>
             <div className="workspace-actions">
               {props.photos.length > 0 && <button type="button" className="danger-link" onClick={props.onClear}>Clear</button>}
@@ -456,7 +522,7 @@ function Dashboard(props: {
                     <div className="photo-input-meta"><span>{photo.time || "Today"}</span><button type="button" onClick={() => props.onRemove(photo.id)} aria-label={`Remove ${photo.label || "photo"}`}>×</button></div>
                   </article>
                 ))}
-                <button className="add-photo-tile" type="button" onClick={props.onPick}><span>+</span><strong>Add photos</strong><small>JPG, PNG, HEIC</small></button>
+                {props.photos.length < MAX_PHOTOS && <button className="add-photo-tile" type="button" onClick={props.onPick}><span>+</span><strong>Add photos</strong><small>Up to 5 photos</small></button>}
               </div>
 
               {selected && (

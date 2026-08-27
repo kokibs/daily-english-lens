@@ -33,7 +33,7 @@ const outputSchema = {
     moments: {
       type: "array",
       minItems: 1,
-      maxItems: 6,
+      maxItems: 5,
       items: {
         type: "object",
         additionalProperties: false,
@@ -93,8 +93,8 @@ function isPhotoEntry(value: unknown): value is PhotoEntry {
 }
 
 function normalizedPhotos(input: unknown): PhotoEntry[] {
-  if (!Array.isArray(input) || input.length < 1 || input.length > 6 || !input.every(isPhotoEntry)) {
-    throw new Error("1〜6枚の対応画像を送信してください。");
+  if (!Array.isArray(input) || input.length < 1 || input.length > 5 || !input.every(isPhotoEntry)) {
+    throw new Error("1〜5枚の対応画像を送信してください。");
   }
   return input.map((photo) => ({
     ...photo,
@@ -229,7 +229,7 @@ export async function handleVisionGenerateRequest(
     return Response.json({ error: "Method not allowed." }, { status: 405, headers: { allow: "POST" } });
   }
   const contentLength = Number(request.headers.get("content-length") || 0);
-  if (contentLength > 15_000_000) {
+  if (contentLength > 4_200_000) {
     return Response.json({ error: "写真の容量が大きすぎます。枚数を減らしてください。" }, { status: 413 });
   }
   if (!apiKey) {
@@ -242,9 +242,10 @@ export async function handleVisionGenerateRequest(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown vision error";
     console.error("Daily English Lens vision generation failed:", message);
-    const userMessage = message.startsWith("1〜6枚") || message.includes("容量")
+    const isClientError = message.startsWith("1〜5枚") || message.includes("容量");
+    const userMessage = isClientError
       ? message
       : "写真の解析に失敗しました。少し待って再試行してください。";
-    return Response.json({ error: userMessage }, { status: 502 });
+    return Response.json({ error: userMessage }, { status: isClientError ? 400 : 502 });
   }
 }

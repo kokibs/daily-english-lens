@@ -70,3 +70,32 @@ test("does not fall back to generic copy when the server key is missing", async 
   assert.equal(response.status, 503);
   assert.match(body.error, /準備/);
 });
+
+test("rejects more than five photos before calling the Vision API", async () => {
+  const request = new Request("https://example.test/api/generate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ photos: Array.from({ length: 6 }, (_, index) => ({
+      ...photos[0],
+      id: `photo-${index}`,
+    })) }),
+  });
+  const response = await handleVisionGenerateRequest(request, "test-key", undefined, async () => {
+    throw new Error("Vision API must not be called");
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.match(body.error, /1〜5枚/);
+});
+
+test("rejects requests above the Vercel payload budget", async () => {
+  const request = new Request("https://example.test/api/generate", {
+    method: "POST",
+    headers: { "content-type": "application/json", "content-length": "4200001" },
+    body: JSON.stringify({ photos }),
+  });
+  const response = await handleVisionGenerateRequest(request, "test-key");
+
+  assert.equal(response.status, 413);
+});
