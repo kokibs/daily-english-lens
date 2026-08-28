@@ -11,11 +11,12 @@ async function dashboardSource() {
 }
 
 test("renders the login entry and retains the authenticated product experience", async () => {
-  const [home, login, dashboard, layout] = await Promise.all([
+  const [home, login, dashboard, layout, authProxy] = await Promise.all([
     source("app/page.tsx"),
     source("app/login/login-client.tsx"),
     dashboardSource(),
     source("app/layout.tsx"),
+    source("lib/supabase/proxy.ts"),
   ]);
   assert.match(`${home}${login}`, /Daily English Lens/);
   assert.match(login, /Turn your day/);
@@ -27,6 +28,7 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(dashboard, /Mobile navigation/);
   assert.match(layout, /width: "device-width"/);
   assert.match(layout, /initialScale: 1/);
+  assert.match(authProxy, /pathname === "\/privacy"/);
   assert.doesNotMatch(`${home}${login}`, /Sample day|Morning commute|Badminton practice/);
   assert.doesNotMatch(`${home}${login}`, /codex-preview|Building your site|react-loading-skeleton/i);
 });
