@@ -24,7 +24,7 @@ The prototype is designed to make that idea understandable in the first few seco
 ## Main features
 
 - Add, remove, reorder, and annotate photos directly from the home dashboard
-- Upload up to five photos with drag-and-drop or a file picker
+- Upload up to ten photos with drag-and-drop or a file picker
 - Analyze the actual photo together with its optional note using a Vision-capable model
 - Generate a short bilingual diary grounded in each visible moment
 - Learn up to six conversational expressions tied back to individual photos

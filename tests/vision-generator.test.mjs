@@ -58,6 +58,36 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.ok(entry.expressions.every((item) => item.cloze.includes("______")));
 });
 
+test("accepts ten photos and returns one moment for each photo", async () => {
+  const tenPhotos = Array.from({ length: 10 }, (_, index) => ({
+    ...photos[0],
+    id: `photo-${index + 1}`,
+    note: `moment ${index + 1}`,
+  }));
+  const tenMoments = tenPhotos.map((photo, index) => ({
+    photoId: photo.id,
+    english: `I remembered moment ${index + 1}.`,
+    japanese: `出来事${index + 1}を思い出した。`,
+  }));
+  const tenPhotoOutput = {
+    ...generated,
+    moments: tenMoments,
+    expressions: generated.expressions.map((expression) => ({
+      ...expression,
+      photoId: tenPhotos[0].id,
+    })),
+  };
+  const fakeFetch = async () => Response.json({
+    output: [{ content: [{ type: "output_text", text: JSON.stringify(tenPhotoOutput) }] }],
+  });
+
+  const entry = await generateWithVision(tenPhotos, "secret-test-key", "vision-test-model", fakeFetch);
+
+  assert.equal(entry.photos.length, 10);
+  assert.equal(entry.moments.length, 10);
+  assert.deepEqual(entry.moments.map((moment) => moment.photoId), tenPhotos.map((photo) => photo.id));
+});
+
 test("does not fall back to generic copy when the server key is missing", async () => {
   const request = new Request("https://example.test/api/generate", {
     method: "POST",
@@ -71,11 +101,11 @@ test("does not fall back to generic copy when the server key is missing", async 
   assert.match(body.error, /準備/);
 });
 
-test("rejects more than five photos before calling the Vision API", async () => {
+test("rejects more than ten photos before calling the Vision API", async () => {
   const request = new Request("https://example.test/api/generate", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ photos: Array.from({ length: 6 }, (_, index) => ({
+    body: JSON.stringify({ photos: Array.from({ length: 11 }, (_, index) => ({
       ...photos[0],
       id: `photo-${index}`,
     })) }),
@@ -86,7 +116,7 @@ test("rejects more than five photos before calling the Vision API", async () => 
   const body = await response.json();
 
   assert.equal(response.status, 400);
-  assert.match(body.error, /1〜5枚/);
+  assert.match(body.error, /1〜10枚/);
 });
 
 test("rejects requests above the Vercel payload budget", async () => {

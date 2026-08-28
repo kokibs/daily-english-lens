@@ -33,7 +33,7 @@ const outputSchema = {
     moments: {
       type: "array",
       minItems: 1,
-      maxItems: 5,
+      maxItems: 10,
       items: {
         type: "object",
         additionalProperties: false,
@@ -93,8 +93,8 @@ function isPhotoEntry(value: unknown): value is PhotoEntry {
 }
 
 function normalizedPhotos(input: unknown): PhotoEntry[] {
-  if (!Array.isArray(input) || input.length < 1 || input.length > 5 || !input.every(isPhotoEntry)) {
-    throw new Error("1〜5枚の対応画像を送信してください。");
+  if (!Array.isArray(input) || input.length < 1 || input.length > 10 || !input.every(isPhotoEntry)) {
+    throw new Error("1〜10枚の対応画像を送信してください。");
   }
   return input.map((photo) => ({
     ...photo,
@@ -242,7 +242,7 @@ export async function handleVisionGenerateRequest(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown vision error";
     console.error("Daily English Lens vision generation failed:", message);
-    const isClientError = message.startsWith("1〜5枚") || message.includes("容量");
+    const isClientError = message.startsWith("1〜10枚") || message.includes("容量");
     const userMessage = isClientError
       ? message
       : "写真の解析に失敗しました。少し待って再試行してください。";

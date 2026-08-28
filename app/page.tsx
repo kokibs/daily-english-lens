@@ -20,9 +20,10 @@ type Feedback = "correct" | "almost" | "wrong" | null;
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
 const GENERATION_USAGE_KEY = "daily-english-lens:generation-usage";
-const MAX_PHOTOS = 5;
+const MAX_PHOTOS = 10;
 const MAX_DAILY_GENERATIONS = 5;
-const MAX_IMAGE_DATA_URL_LENGTH = 620_000;
+// Ten optimized images plus notes must stay below Vercel's 4.5 MB body limit.
+const MAX_IMAGE_DATA_URL_LENGTH = 360_000;
 
 function playSuccessChime() {
   const AudioContextClass = window.AudioContext || (window as typeof window & {
@@ -210,7 +211,7 @@ export default function Home() {
     const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
     const remaining = Math.max(0, MAX_PHOTOS - photos.length);
     if (!remaining) {
-      setGenerationError("写真は1日最大5枚までです。");
+      setGenerationError("写真は1日最大10枚までです。");
       return;
     }
     try {
@@ -226,7 +227,7 @@ export default function Home() {
       }));
       if (next.length) setSelectedPhotoId(next[0].id);
       setPhotos((current) => [...current, ...next]);
-      setGenerationError(images.length > remaining ? "写真は1日最大5枚までです。" : null);
+      setGenerationError(images.length > remaining ? "写真は1日最大10枚までです。" : null);
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "写真を読み込めませんでした。");
     }
@@ -494,7 +495,7 @@ function Dashboard(props: {
           <div className="workspace-head">
             <div className="section-title-row">
               <span className="step-number primary">1</span>
-              <div><p className="section-eyebrow">PRIMARY · TODAY</p><h2>Add today&apos;s photos</h2><small>今日を思い出せる写真を、1〜5枚選びましょう。</small></div>
+              <div><p className="section-eyebrow">PRIMARY · TODAY</p><h2>Add today&apos;s photos</h2><small>今日を思い出せる写真を、1〜10枚選びましょう。</small></div>
             </div>
             <div className="workspace-actions">
               {props.photos.length > 0 && <button type="button" className="danger-link" onClick={props.onClear}>Clear</button>}
@@ -522,7 +523,7 @@ function Dashboard(props: {
                     <div className="photo-input-meta"><span>{photo.time || "Today"}</span><button type="button" onClick={() => props.onRemove(photo.id)} aria-label={`Remove ${photo.label || "photo"}`}>×</button></div>
                   </article>
                 ))}
-                {props.photos.length < MAX_PHOTOS && <button className="add-photo-tile" type="button" onClick={props.onPick}><span>+</span><strong>Add photos</strong><small>Up to 5 photos</small></button>}
+                {props.photos.length < MAX_PHOTOS && <button className="add-photo-tile" type="button" onClick={props.onPick}><span>+</span><strong>Add photos</strong><small>Up to 10 photos</small></button>}
               </div>
 
               {selected && (
