@@ -1,4 +1,6 @@
 import { handleVisionGenerateRequest } from "../../../lib/vision-generator";
+import { isSupabaseConfigured } from "../../../lib/supabase/config";
+import { createClient } from "../../../lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,10 +23,10 @@ function sourceKey(request: Request) {
     ?? "unknown";
 }
 
-function checkBurstLimit(request: Request) {
+function checkBurstLimit(request: Request, userId: string) {
   if (process.env.NODE_ENV !== "production") return null;
   const now = Date.now();
-  const key = sourceKey(request);
+  const key = `${userId}:${sourceKey(request)}`;
   const current = burstBuckets.get(key);
   if (!current || current.resetAt <= now) {
     burstBuckets.set(key, { count: 1, resetAt: now + 10 * 60 * 1000 });
@@ -42,7 +44,20 @@ function checkBurstLimit(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const limited = checkBurstLimit(request);
+  if (!isSupabaseConfigured()) {
+    return Response.json({ error: "ログイン機能の設定が完了していません。" }, { status: 503 });
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return Response.json({ error: "Googleアカウントでログインしてください。" }, {
+      status: 401,
+      headers: { "cache-control": "no-store" },
+    });
+  }
+
+  const limited = checkBurstLimit(request, user.id);
   if (limited) return limited;
   return handleVisionGenerateRequest(
     request,

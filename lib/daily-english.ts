@@ -1,6 +1,7 @@
 export type PhotoEntry = {
   id: string;
   imageUrl: string;
+  storagePath?: string;
   note?: string;
   label?: string;
   time?: string;
