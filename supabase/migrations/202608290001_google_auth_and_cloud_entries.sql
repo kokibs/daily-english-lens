@@ -14,6 +14,9 @@ create table if not exists public.daily_entries (
 
 alter table public.daily_entries enable row level security;
 
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on table public.daily_entries to authenticated;
+
 create policy "Users can read their own daily entries"
 on public.daily_entries for select
 to authenticated
