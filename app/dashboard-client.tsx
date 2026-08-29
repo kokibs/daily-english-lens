@@ -92,32 +92,8 @@ function concreteJapanesePrompt(item: ReviewItem) {
 }
 
 function concreteCloze(item: ReviewItem) {
-  const current = item.expression.cloze;
-  const visibleText = current.replace(/Complete the expression:/gi, "").replace(/[_＿\s]/g, "");
-  const blankCount = current.match(/(?:_{2,}|＿{2,})/g)?.length ?? 0;
-  if (!hasPlaceholder(item.expression.expression) && visibleText.length > 1 && blankCount >= 2) return current;
-
-  const example = item.expression.example;
-  const learningWords = /\b(am|is|are|was|were|have|has|had|do|does|did|got|took|went|made|felt|saw|ate|drank|visited|enjoyed|worked|spent|grabbed|caught|stayed|listened|looked|prayed|figured|pushed|wore|played|tried|walked|arrived|in|at|on|with|from|after|before)\b/gi;
-  let replacements = 0;
-  const withLearningBlanks = example.replace(learningWords, (word) => {
-    if (replacements >= 3) return word;
-    replacements += 1;
-    return "______";
-  });
-  if (replacements >= 2) return withLearningBlanks;
-
-  const parts = example.split(/(\s+)/);
-  for (let index = 0; index < parts.length && replacements < 2; index += 1) {
-    const word = parts[index].replace(/[^A-Za-z']/g, "");
-    const isProtected = !word || /^(I|a|an|the|and|or|but)$/i.test(word)
-      || (index > 0 && /^[A-Z]/.test(word));
-    if (!isProtected && word.length >= 3 && !parts[index].includes("______")) {
-      parts[index] = parts[index].replace(word, "______");
-      replacements += 1;
-    }
-  }
-  return parts.join("");
+  const targetWords = concreteReviewTarget(item).trim().split(/\s+/).filter(Boolean);
+  return `Complete the expression: ${targetWords.map(() => "______").join(" ")}`;
 }
 
 function todayLabel() {
@@ -497,25 +473,14 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   function checkAnswer() {
     const reviewItem = screen === "review" ? currentSessionReview : quickReview;
     if (!reviewItem || !answer.trim()) return;
-    const expectedAnswers = [concreteReviewTarget(reviewItem), reviewItem.expression.example]
-      .map(normalizeAnswer)
-      .filter((value, index, values) => value && values.indexOf(value) === index);
+    const expected = normalizeAnswer(concreteReviewTarget(reviewItem));
+    const suffix = expected.split(" ").slice(1).join(" ");
     const actual = normalizeAnswer(answer);
-    const exact = expectedAnswers.some((expected) => {
-      const suffix = expected.split(" ").slice(1).join(" ");
-      return actual === expected || Boolean(suffix && actual === suffix);
-    });
-    const close = expectedAnswers.some((expected) => {
-      const suffix = expected.split(" ").slice(1).join(" ");
-      return distance(actual, expected) <= 2
-        || Boolean(suffix && distance(actual, suffix) <= 2)
-        || expected.includes(actual);
-    });
     let result: Exclude<Feedback, null>;
-    if (exact) {
+    if (actual === expected || (suffix && actual === suffix)) {
       result = "correct";
       if (quizSoundEnabled) playSuccessChime();
-    } else if (close) {
+    } else if (distance(actual, expected) <= 2 || (suffix && distance(actual, suffix) <= 2) || expected.includes(actual)) {
       result = "almost";
     } else {
       result = "wrong";
