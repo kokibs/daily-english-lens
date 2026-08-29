@@ -84,6 +84,7 @@ Quiz content rules:
 - Never put underscores, blanks, brackets, "something", or other placeholders in expression, japanese, or example.
 - The japanese field must be a complete clue containing the concrete place, food, object, activity, or person category from the photo or note. For example, write 「八坂神社を訪れてお参りする」, never 「___を訪れてお参りする」.
 - The expression and example must also use concrete nouns from that moment whenever known. Do not omit Yasaka Shrine, sashimi, badminton practice, or another known subject behind a placeholder.
+- Make each reusable expression at least two words long, so its review question tests a meaningful phrase rather than only one isolated word.
 - Write the example as a complete sentence with useful context outside the expression, so the app can hide the learning phrase while still showing meaningful nouns and context.`;
 
 function isPhotoEntry(value: unknown): value is PhotoEntry {
@@ -147,7 +148,8 @@ function validatedOutput(value: unknown, photos: PhotoEntry[]): VisionOutput {
       && [item.expression, item.japanese, item.example, item.explanation]
         .every((text) => typeof text === "string" && text.trim())
       && [item.expression, item.japanese, item.example]
-        .every((text) => !/(?:_{2,}|＿{2,}|\[\s*\]|\(\s*\))/.test(text)));
+        .every((text) => !/(?:_{2,}|＿{2,}|\[\s*\]|\(\s*\))/.test(text))
+      && item.expression.trim().split(/\s+/).length >= 2);
   if (typeof result.diaryEnglish !== "string" || !result.diaryEnglish.trim()
     || typeof result.diaryJapanese !== "string" || !result.diaryJapanese.trim()
     || !hasAllMoments || !expressionsAreValid) {

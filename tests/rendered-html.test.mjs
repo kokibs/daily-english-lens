@@ -35,6 +35,8 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(dashboard, /concreteJapanesePrompt\(item\)/);
   assert.match(dashboard, /concreteCloze\(item\)/);
   assert.match(dashboard, /concreteReviewTarget\(reviewItem\)/);
+  assert.match(dashboard, /blankCount >= 2/);
+  assert.match(dashboard, /reviewItem\.expression\.example/);
   assert.doesNotMatch(dashboard, /reviewSessionIndex \+ 1\) %/);
   assert.match(dashboard, /Mobile navigation/);
   assert.match(layout, /width: "device-width"/);

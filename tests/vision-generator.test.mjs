@@ -53,6 +53,7 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.equal(captured.body.store, false);
   assert.match(captured.body.instructions, /Never put underscores/);
   assert.match(captured.body.instructions, /八坂神社を訪れてお参りする/);
+  assert.match(captured.body.instructions, /at least two words long/);
   assert.equal(captured.body.input[0].content.filter((item) => item.type === "input_image").length, 2);
   assert.match(captured.body.input[0].content[1].text, /八坂神社に行った/);
   assert.match(captured.body.input[0].content[1].text, /2時55分/);
