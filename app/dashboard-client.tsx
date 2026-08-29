@@ -824,7 +824,20 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
 
   return (
     <section className="app-screen result-screen section-shell reveal">
-      <div className="page-toolbar"><div><p className="kicker">{formatDay(entry.date)} · Generated</p><h1>Your day in English</h1><p>写真を見ると、その日の英語が思い出せる。</p></div><div className="page-toolbar-actions">{saved && <button className="delete-entry-action" type="button" onClick={onDelete} disabled={deleting}>{deleting ? "Deleting…" : "Delete this day"}</button>}<button className="secondary-action" type="button" onClick={onCreate}>+ Add another day</button></div></div>
+      <div className="page-toolbar">
+        <div><p className="kicker">{formatDay(entry.date)} · Generated</p><h1>Your day in English</h1><p>写真を見ると、その日の英語が思い出せる。</p></div>
+        <div className="page-toolbar-actions">
+          {saved && (
+            <button className="delete-entry-action" type="button" onClick={onDelete} disabled={deleting} aria-label="Delete this saved day">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+              </svg>
+              <span>{deleting ? "Deleting…" : "Delete this day"}</span>
+            </button>
+          )}
+          <button className="secondary-action" type="button" onClick={onCreate}>+ Add another day</button>
+        </div>
+      </div>
 
       <article className="diary-summary">
         <div><span>DAY SUMMARY</span><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button></div>

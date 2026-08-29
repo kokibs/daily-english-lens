@@ -26,6 +26,7 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(dashboard, /Generate today/);
   assert.match(dashboard, /Past days/);
   assert.match(dashboard, /Delete this day/);
+  assert.match(dashboard, /Delete this saved day/);
   assert.match(dashboard, /deleteDailyEntry/);
   assert.match(dashboard, /Mobile navigation/);
   assert.match(layout, /width: "device-width"/);
