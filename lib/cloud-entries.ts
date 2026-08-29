@@ -177,3 +177,24 @@ export async function saveDailyEntry(userId: string, entry: DailyEntry): Promise
     })),
   };
 }
+
+export async function deleteDailyEntry(userId: string, entry: DailyEntry): Promise<void> {
+  const supabase = createClient();
+  const storagePaths = entry.photos
+    .map((photo) => photo.storagePath)
+    .filter((path): path is string => Boolean(path));
+
+  if (storagePaths.length) {
+    const { error: storageError } = await supabase.storage.from(PHOTO_BUCKET).remove(storagePaths);
+    if (storageError) throw new Error(`写真を削除できませんでした: ${storageError.message}`);
+  }
+
+  const { error } = await supabase
+    .from("daily_entries")
+    .delete()
+    .eq("user_id", userId)
+    .eq("entry_date", entry.date)
+    .select("id")
+    .single();
+  if (error) throw new Error(`日記を削除できませんでした: ${error.message}`);
+}

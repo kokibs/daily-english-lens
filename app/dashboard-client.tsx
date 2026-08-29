@@ -15,7 +15,7 @@ import {
   isLegacyTutorialEntry,
   PhotoEntry,
 } from "../lib/daily-english";
-import { loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
+import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
 import { createClient } from "../lib/supabase/client";
 
 export type AppUser = {
@@ -173,6 +173,8 @@ export default function DashboardClient({ user }: { user: AppUser }) {
   const [savedNotice, setSavedNotice] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncIssue, setSyncIssue] = useState(false);
@@ -255,6 +257,7 @@ export default function DashboardClient({ user }: { user: AppUser }) {
     setScreen("home");
     setSavedNotice(false);
     setSaveError(null);
+    setDeleteError(null);
     window.setTimeout(() => document.getElementById("today-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
@@ -342,6 +345,7 @@ export default function DashboardClient({ user }: { user: AppUser }) {
       setActiveEntry(result);
       setSavedNotice(false);
       setSaveError(null);
+      setDeleteError(null);
       setScreen("today");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -371,8 +375,35 @@ export default function DashboardClient({ user }: { user: AppUser }) {
     setActiveEntry(entry);
     setSavedNotice(true);
     setSaveError(null);
+    setDeleteError(null);
     setScreen("today");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function deleteSavedDay() {
+    if (!activeEntry || !savedNotice || deleting) return;
+    const confirmed = window.confirm("この日の写真・英語日記・復習データをすべて削除します。元に戻せません。削除しますか？");
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteDailyEntry(user.id, activeEntry);
+      setSavedEntries((entries) => entries.filter((entry) => entry.date !== activeEntry.date));
+      setActiveEntry(null);
+      setSavedNotice(false);
+      setReviewIndex(0);
+      setAnswer("");
+      setFeedback(null);
+      setSyncNotice("写真と日記を削除しました。");
+      setSyncIssue(false);
+      setScreen("history");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "写真と日記を削除できませんでした。");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function signOut() {
@@ -464,7 +495,7 @@ export default function DashboardClient({ user }: { user: AppUser }) {
 
       {screen === "today" && (
         activeEntry
-          ? <TodayScreen key={activeEntry.id} entry={activeEntry} saved={savedNotice} saving={saving} saveError={saveError} onSave={() => void saveToday()} onReview={() => navigate("review")} onCreate={goToCreate} />
+          ? <TodayScreen key={activeEntry.id} entry={activeEntry} saved={savedNotice} saving={saving} deleting={deleting} saveError={saveError} deleteError={deleteError} onSave={() => void saveToday()} onDelete={() => void deleteSavedDay()} onReview={() => navigate("review")} onCreate={goToCreate} />
           : <EmptyState title="No English yet" body="今日の写真を追加すると、ここに英語が表示されます。" onCreate={goToCreate} />
       )}
 
@@ -748,12 +779,15 @@ function RecentDays({ entries, onOpen, onOpenHistory }: { entries: DailyEntry[];
   );
 }
 
-function TodayScreen({ entry, saved, saving, saveError, onSave, onReview, onCreate }: {
+function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, onSave, onDelete, onReview, onCreate }: {
   entry: DailyEntry;
   saved: boolean;
   saving: boolean;
+  deleting: boolean;
   saveError: string | null;
+  deleteError: string | null;
   onSave: () => void;
+  onDelete: () => void;
   onReview: () => void;
   onCreate: () => void;
 }) {
@@ -790,7 +824,7 @@ function TodayScreen({ entry, saved, saving, saveError, onSave, onReview, onCrea
 
   return (
     <section className="app-screen result-screen section-shell reveal">
-      <div className="page-toolbar"><div><p className="kicker">{formatDay(entry.date)} · Generated</p><h1>Your day in English</h1><p>写真を見ると、その日の英語が思い出せる。</p></div><button className="secondary-action" type="button" onClick={onCreate}>+ Add another day</button></div>
+      <div className="page-toolbar"><div><p className="kicker">{formatDay(entry.date)} · Generated</p><h1>Your day in English</h1><p>写真を見ると、その日の英語が思い出せる。</p></div><div className="page-toolbar-actions">{saved && <button className="delete-entry-action" type="button" onClick={onDelete} disabled={deleting}>{deleting ? "Deleting…" : "Delete this day"}</button>}<button className="secondary-action" type="button" onClick={onCreate}>+ Add another day</button></div></div>
 
       <article className="diary-summary">
         <div><span>DAY SUMMARY</span><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button></div>
@@ -830,6 +864,7 @@ function TodayScreen({ entry, saved, saving, saveError, onSave, onReview, onCrea
         <button type="button" onClick={saved ? onReview : onSave} disabled={saving}>{saved ? "Start review" : saving ? "Saving…" : "Save today's English"}<span>→</span></button>
       </div>
       {saveError && <div className="save-error" role="alert">{saveError} <button type="button" onClick={onSave}>Try again</button></div>}
+      {deleteError && <div className="save-error" role="alert">{deleteError} <button type="button" onClick={onDelete}>Try again</button></div>}
     </section>
   );
 }
