@@ -37,21 +37,23 @@ export default function LoginClient({ configured }: { configured: boolean }) {
 
   return (
     <main className="login-page">
-      <section className="login-brand-panel" aria-label="Daily English Lens introduction">
-        <div className="login-brand-lockup"><span className="brand-mark">D</span><strong>Daily English Lens</strong></div>
-        <div>
-          <p className="kicker">YOUR LIFE · YOUR ENGLISH</p>
-          <h1>Turn your day<br />into English.</h1>
-          <p>今日の写真から、自分が本当に使いたい英語を作る。保存した日記は、どの端末からでも続きを学べます。</p>
+      <div className="login-backdrop" aria-hidden="true">
+        <div className="login-brand-panel">
+          <div className="login-brand-lockup"><span className="brand-mark">D</span><strong>Daily English Lens</strong></div>
+          <div className="login-backdrop-copy">
+            <p className="kicker">YOUR LIFE · YOUR ENGLISH</p>
+            <h1>Turn your day<br />into English.</h1>
+            <p>今日の写真から、自分が本当に使いたい英語を作る。保存した日記は、どの端末からでも続きを学べます。</p>
+          </div>
+          <div className="login-loop"><span>Life</span><b>→</b><span>English</span><b>→</b><span>Memory</span><b>→</b><span>Review</span></div>
         </div>
-        <div className="login-loop"><span>Life</span><b>→</b><span>English</span><b>→</b><span>Memory</span><b>→</b><span>Review</span></div>
-      </section>
+      </div>
 
-      <section className="login-action-panel">
+      <section className="login-action-panel" aria-label="Googleアカウントでログイン">
         <div className="login-card">
-          <span className="login-step">01</span>
+          <div className="login-card-brand"><span className="brand-mark">D</span><strong>Daily English Lens</strong></div>
           <p className="section-eyebrow">WELCOME</p>
-          <h2>毎日の記録を、あなたのアカウントへ。</h2>
+          <h2><span>あなたの一日を、</span><span>英語にしよう。</span></h2>
           <p>Googleアカウントでログインすると、写真・英語日記・復習データを安全に保存できます。</p>
           <button className="google-login" type="button" onClick={() => void signIn()} disabled={!configured || loading}>
             <GoogleMark />
