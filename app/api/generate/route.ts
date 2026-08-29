@@ -1,6 +1,7 @@
 import { handleVisionGenerateRequest } from "../../../lib/vision-generator";
 import { isSupabaseConfigured } from "../../../lib/supabase/config";
 import { createClient } from "../../../lib/supabase/server";
+import { hasTemporaryUnlimitedGeneration } from "../../../lib/generation-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -57,8 +58,15 @@ export async function POST(request: Request) {
     });
   }
 
-  const limited = checkBurstLimit(request, user.id);
-  if (limited) return limited;
+  const unlimitedGenerationToday = hasTemporaryUnlimitedGeneration(
+    user.email,
+    process.env.TEMP_UNLIMITED_GENERATION_EMAIL,
+    process.env.TEMP_UNLIMITED_GENERATION_DATE,
+  );
+  if (!unlimitedGenerationToday) {
+    const limited = checkBurstLimit(request, user.id);
+    if (limited) return limited;
+  }
   return handleVisionGenerateRequest(
     request,
     process.env.OPENAI_API_KEY,

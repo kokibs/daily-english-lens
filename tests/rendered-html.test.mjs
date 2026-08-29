@@ -47,3 +47,19 @@ test("emits product-specific social metadata", async () => {
   assert.match(layout, /Daily English Lens/);
   assert.match(layout, /\/og-dashboard\.png/);
 });
+
+test("keeps temporary unlimited generation private and date scoped", async () => {
+  const [home, dashboard, route, access] = await Promise.all([
+    source("app/page.tsx"),
+    dashboardSource(),
+    source("app/api/generate/route.ts"),
+    source("lib/generation-access.ts"),
+  ]);
+  assert.match(home, /TEMP_UNLIMITED_GENERATION_EMAIL/);
+  assert.match(home, /unlimitedGenerationToday/);
+  assert.match(dashboard, /!unlimitedGenerationToday/);
+  assert.match(route, /if \(!unlimitedGenerationToday\)/);
+  assert.match(access, /Asia\/Tokyo/);
+  assert.match(access, /todayInJapan === allowedDate\.trim\(\)/);
+  assert.doesNotMatch(`${home}${dashboard}${route}${access}`, /@gmail\.com/);
+});

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import DashboardClient, { type AppUser } from "./dashboard-client";
 import { isSupabaseConfigured } from "../lib/supabase/config";
 import { createClient } from "../lib/supabase/server";
+import { hasTemporaryUnlimitedGeneration } from "../lib/generation-access";
 
 export default async function Home() {
   if (!isSupabaseConfigured()) {
@@ -33,5 +34,11 @@ export default async function Home() {
     avatarUrl: typeof metadata.avatar_url === "string" ? metadata.avatar_url : null,
   };
 
-  return <DashboardClient user={appUser} />;
+  const unlimitedGenerationToday = hasTemporaryUnlimitedGeneration(
+    user.email,
+    process.env.TEMP_UNLIMITED_GENERATION_EMAIL,
+    process.env.TEMP_UNLIMITED_GENERATION_DATE,
+  );
+
+  return <DashboardClient user={appUser} unlimitedGenerationToday={unlimitedGenerationToday} />;
 }

@@ -164,7 +164,7 @@ async function optimizedImageUrl(file: File) {
   }
 }
 
-export default function DashboardClient({ user }: { user: AppUser }) {
+export default function DashboardClient({ user, unlimitedGenerationToday = false }: { user: AppUser; unlimitedGenerationToday?: boolean }) {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>("home");
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
@@ -364,7 +364,7 @@ export default function DashboardClient({ user }: { user: AppUser }) {
 
   async function createEnglish() {
     if (!photos.length) return;
-    if (generationUsage().count >= MAX_DAILY_GENERATIONS) {
+    if (!unlimitedGenerationToday && generationUsage().count >= MAX_DAILY_GENERATIONS) {
       setGenerationError("今日の生成は5回までです。明日になるとまた使えます。");
       return;
     }
@@ -372,7 +372,7 @@ export default function DashboardClient({ user }: { user: AppUser }) {
     setGenerationError(null);
     try {
       const result = await generateDailyEnglish(photos);
-      recordGeneration();
+      if (!unlimitedGenerationToday) recordGeneration();
       setActiveEntry(result);
       setSavedNotice(false);
       setSaveError(null);
