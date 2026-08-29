@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  approximatePhotoTime,
   createDailyEntryFromPhotos,
   hasLegacyTutorialOutput,
   isLegacyTutorialEntry,
 } from "../lib/daily-english.ts";
+
+test("rounds automatic photo times while leaving note text independent", () => {
+  assert.equal(approximatePhotoTime(new Date(2026, 7, 29, 14, 54)), "午後3時ごろ");
+  assert.equal(approximatePhotoTime(new Date(2026, 7, 29, 14, 20)), "午後2時ごろ");
+  assert.equal(approximatePhotoTime("2:54 PM"), "午後3時ごろ");
+  assert.equal(approximatePhotoTime("午後3時ごろ"), "午後3時ごろ");
+});
 
 test("builds the diary from uploaded photo context instead of tutorial copy", () => {
   const entry = createDailyEntryFromPhotos([

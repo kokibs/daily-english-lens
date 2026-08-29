@@ -73,6 +73,7 @@ Analyze every image itself and combine that visual evidence with its Japanese or
 For every photo:
 - Return exactly one concrete, natural English sentence at CEFR A2-B1 level and a faithful Japanese translation.
 - Prefer the user's note as the account of what happened when it is compatible with the image. If the note says 「八坂神社に行った」 and the image shows a shrine, write something like "I visited Yasaka Shrine today."
+- Treat the supplied photo time as approximate. If the user's note contains a more precise time, preserve and prioritize the time written in the note.
 - When there is no useful note, describe a plausible personal experience grounded in visible details, such as enjoying the sashimi shown in a meal photo.
 - Never use generic placeholders such as "This moment stood out to me today" or "I wanted to remember this moment" when a specific subject, place, food, activity, or event is visible or stated.
 - Do not invent unseen companions, emotions, exact locations, or actions. A named location in the note may be used; visual evidence alone should not be used to guess a precise landmark.

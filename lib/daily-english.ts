@@ -53,6 +53,34 @@ export function dateOnly(date: Date) {
   }).format(date);
 }
 
+export function approximatePhotoTime(value: Date | string | undefined) {
+  if (!value) return "";
+  if (typeof value === "string" && value.includes("ごろ")) return value;
+
+  let hours: number;
+  let minutes: number;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    hours = value.getHours();
+    minutes = value.getMinutes();
+  } else {
+    const match = value.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+    if (!match) return value;
+    hours = Number(match[1]);
+    minutes = Number(match[2]);
+    const period = match[3]?.toUpperCase();
+    if (period) {
+      hours %= 12;
+      if (period === "PM") hours += 12;
+    }
+  }
+
+  const roundedHour = (hours + (minutes >= 30 ? 1 : 0)) % 24;
+  const period = roundedHour < 12 ? "午前" : "午後";
+  const displayHour = roundedHour % 12 || 12;
+  return `${period}${displayHour}時ごろ`;
+}
+
 function expression(
   expressionText: string,
   japanese: string,

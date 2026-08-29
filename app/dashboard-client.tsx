@@ -5,6 +5,7 @@
 import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  approximatePhotoTime,
   createDailyEntryFromPhotos,
   DailyEntry,
   dateOnly,
@@ -272,7 +273,7 @@ export default function DashboardClient({ user }: { user: AppUser }) {
           imageUrl,
           note: "",
           label: file.name.replace(/\.[^.]+$/, ""),
-          time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(file.lastModified)),
+          time: approximatePhotoTime(new Date(file.lastModified)),
         };
       }));
       if (next.length) setSelectedPhotoId(next[0].id);
@@ -610,7 +611,7 @@ function Dashboard(props: {
                       <span className="photo-order">{String(index + 1).padStart(2, "0")}</span>
                       {photo.note && <span className="note-status">✓ Note</span>}
                     </button>
-                    <div className="photo-input-meta"><span>{photo.time || "Today"}</span><button type="button" onClick={() => props.onRemove(photo.id)} aria-label={`Remove ${photo.label || "photo"}`}>×</button></div>
+                    <div className="photo-input-meta"><span>{approximatePhotoTime(photo.time) || "Today"}</span><button type="button" onClick={() => props.onRemove(photo.id)} aria-label={`Remove ${photo.label || "photo"}`}>×</button></div>
                   </article>
                 ))}
                 {props.photos.length < MAX_PHOTOS && <button className="add-photo-tile" type="button" onClick={props.onPick}><span>+</span><strong>Add photos</strong><small>Up to 10 photos</small></button>}
@@ -621,7 +622,7 @@ function Dashboard(props: {
                   <img src={selected.imageUrl} alt={selected.label || "Selected moment"} />
                   <div className="detail-form">
                     <div className="detail-toolbar">
-                      <div><span>Selected moment</span><strong>{selected.time || "Today"} · {selected.label || "Photo"}</strong></div>
+                      <div><span>Selected moment</span><strong>{approximatePhotoTime(selected.time) || "Today"} · {selected.label || "Photo"}</strong></div>
                       <div><button type="button" onClick={() => props.onMove(selected.id, -1)} aria-label="Move photo left">←</button><button type="button" onClick={() => props.onMove(selected.id, 1)} aria-label="Move photo right">→</button></div>
                     </div>
                     <label htmlFor={`note-${selected.id}`}>What happened? <span>optional</span></label>
@@ -703,7 +704,7 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
       <div className="quick-review-card">
         <div className="quick-memory">
           <img src={photo?.imageUrl} alt={photo?.label || "Yesterday's memory"} />
-          <div><span>{formatDay(item.entry.date, false)} · {photo?.time}</span><strong>{photo?.label}</strong></div>
+          <div><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></div>
         </div>
         <div className="inline-quiz">
           <div className="quiz-prompt"><span>Yesterday&apos;s expression</span><h3>{item.expression.japanese}</h3><p>{item.expression.cloze}</p></div>
@@ -806,7 +807,7 @@ function TodayScreen({ entry, saved, saving, saveError, onSave, onReview, onCrea
               <article className="moment-story" key={photo.id}>
                 <div className="moment-photo"><img src={photo.imageUrl} alt={photo.label || `Moment ${index + 1}`} /><span>{String(index + 1).padStart(2, "0")}</span></div>
                 <div className="moment-copy">
-                  <div className="moment-meta"><span>{photo.time || "Today"}</span><small>{photo.label}</small></div>
+                  <div className="moment-meta"><span>{approximatePhotoTime(photo.time) || "Today"}</span><small>{photo.label}</small></div>
                   <strong>{moment?.english || expression?.example || "I wanted to remember this moment."}</strong>
                   <p>{moment?.japanese || expression?.japanese}</p>
                   {photo.note && <div className="source-note"><span>YOUR NOTE</span>{photo.note}</div>}
@@ -863,7 +864,7 @@ function ReviewScreen({ item, answer, feedback, index, total, soundEnabled, onAn
     <section className="app-screen review-page section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">Daily recall · {Math.min(index + 1, total)} of {total}</p><h1>Review yesterday</h1><p>写真の記憶から、英語を思い出そう。</p></div><div className="review-tools"><button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div></div>
       <div className="review-workspace">
-        <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {photo?.time}</span><strong>{photo?.label}</strong></figcaption></figure>
+        <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
           <span className="question-type">JAPANESE → ENGLISH</span>
           <h2>{item.expression.japanese}</h2>

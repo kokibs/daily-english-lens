@@ -10,7 +10,7 @@ const photos = [
   {
     id: "shrine",
     imageUrl: "data:image/jpeg;base64,ZmFrZQ==",
-    note: "八坂神社に行った",
+    note: "2時55分に八坂神社に行った",
     label: "IMG_0283",
     time: "2:56 PM",
   },
@@ -53,6 +53,7 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.equal(captured.body.store, false);
   assert.equal(captured.body.input[0].content.filter((item) => item.type === "input_image").length, 2);
   assert.match(captured.body.input[0].content[1].text, /八坂神社に行った/);
+  assert.match(captured.body.input[0].content[1].text, /2時55分/);
   assert.equal(entry.moments[0].english, "I visited Yasaka Shrine today.");
   assert.equal(entry.moments[1].english, "I enjoyed a plate of fresh sashimi.");
   assert.ok(entry.expressions.every((item) => item.cloze.includes("______")));
