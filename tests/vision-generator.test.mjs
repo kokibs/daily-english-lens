@@ -51,12 +51,31 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.equal(captured.url, "https://api.openai.com/v1/responses");
   assert.equal(captured.body.model, "vision-test-model");
   assert.equal(captured.body.store, false);
+  assert.match(captured.body.instructions, /Never put underscores/);
+  assert.match(captured.body.instructions, /八坂神社を訪れてお参りする/);
   assert.equal(captured.body.input[0].content.filter((item) => item.type === "input_image").length, 2);
   assert.match(captured.body.input[0].content[1].text, /八坂神社に行った/);
   assert.match(captured.body.input[0].content[1].text, /2時55分/);
   assert.equal(entry.moments[0].english, "I visited Yasaka Shrine today.");
   assert.equal(entry.moments[1].english, "I enjoyed a plate of fresh sashimi.");
   assert.ok(entry.expressions.every((item) => item.cloze.includes("______")));
+});
+
+test("rejects generated quiz clues that replace concrete nouns with blanks", async () => {
+  const outputWithBlankNoun = {
+    ...generated,
+    expressions: generated.expressions.map((expression, index) => index === 0
+      ? { ...expression, japanese: "___を訪れて、そこでお参りする" }
+      : expression),
+  };
+  const fakeFetch = async () => Response.json({
+    output: [{ content: [{ type: "output_text", text: JSON.stringify(outputWithBlankNoun) }] }],
+  });
+
+  await assert.rejects(
+    generateWithVision(photos, "secret-test-key", "vision-test-model", fakeFetch),
+    /解析結果が不完全/,
+  );
 });
 
 test("accepts ten photos and returns one moment for each photo", async () => {

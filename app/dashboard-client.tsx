@@ -74,6 +74,34 @@ function reviewItemKey(item: ReviewItem) {
   return `${item.entry.id}:${item.expression.id}`;
 }
 
+function hasPlaceholder(value: string) {
+  return /(?:_{2,}|＿{2,}|\[\s*\]|\(\s*\))/.test(value);
+}
+
+function concreteReviewTarget(item: ReviewItem) {
+  return hasPlaceholder(item.expression.expression)
+    ? item.expression.example
+    : item.expression.expression;
+}
+
+function concreteJapanesePrompt(item: ReviewItem) {
+  if (!hasPlaceholder(item.expression.japanese)) return item.expression.japanese;
+  return item.entry.moments?.find((moment) => moment.photoId === item.expression.photoId)?.japanese
+    ?? item.entry.diaryJapanese
+    ?? item.expression.japanese;
+}
+
+function concreteCloze(item: ReviewItem) {
+  const current = item.expression.cloze;
+  const visibleText = current.replace(/Complete the expression:/gi, "").replace(/[_＿\s]/g, "");
+  if (!hasPlaceholder(item.expression.expression) && visibleText.length > 1) return current;
+
+  const example = item.expression.example;
+  const verbPattern = /\b(am|is|are|was|were|have|has|had|do|does|did|got|took|went|made|felt|saw|ate|drank|visited|enjoyed|worked|spent|grabbed|caught|stayed|listened|looked|prayed|figured|pushed|wore|played|tried|walked|arrived)\b/i;
+  const withVerbBlank = example.replace(verbPattern, "______");
+  return withVerbBlank === example ? `Complete this sentence: ${example}` : withVerbBlank;
+}
+
 function todayLabel() {
   return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "Asia/Tokyo" }).format(new Date());
 }
@@ -451,7 +479,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   function checkAnswer() {
     const reviewItem = screen === "review" ? currentSessionReview : quickReview;
     if (!reviewItem || !answer.trim()) return;
-    const expected = normalizeAnswer(reviewItem.expression.expression);
+    const expected = normalizeAnswer(concreteReviewTarget(reviewItem));
     const suffix = expected.split(" ").slice(1).join(" ");
     const actual = normalizeAnswer(answer);
     let result: Exclude<Feedback, null>;
@@ -774,7 +802,8 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
 }) {
   if (!item) return null;
   const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
-  const words = item.expression.expression.split(" ");
+  const target = concreteReviewTarget(item);
+  const words = target.split(" ");
   const prefix = words.length > 1 ? words[0] : "";
   const prompt = prefix ? `Type the word after “${prefix}”` : "Type the expression";
 
@@ -790,7 +819,7 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
           <div><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></div>
         </div>
         <div className="inline-quiz">
-          <div className="quiz-prompt"><span>Yesterday&apos;s expression</span><h3>{item.expression.japanese}</h3><p>{item.expression.cloze}</p></div>
+          <div className="quiz-prompt"><span>Yesterday&apos;s expression</span><h3>{concreteJapanesePrompt(item)}</h3><p>{concreteCloze(item)}</p></div>
           <label htmlFor="home-review-answer">{prompt}</label>
           <div className={`inline-answer ${feedback || ""}`}>
             {prefix && <span>{prefix}</span>}
@@ -800,7 +829,7 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
           {feedback && (
             <div className={`inline-feedback ${feedback}`}>
               <span>{feedback === "correct" ? "✓" : "!"}</span>
-              <p><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"} <b>{item.expression.expression}</b></strong><small>{item.expression.example}</small></p>
+              <p><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"} <b>{target}</b></strong><small>{item.expression.example}</small></p>
             </div>
           )}
           <div className="quiz-footer">
@@ -996,11 +1025,11 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
         <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
           <span className="question-type">JAPANESE → ENGLISH</span>
-          <h2>{item.expression.japanese}</h2>
-          <p>{item.expression.cloze}</p>
+          <h2>{concreteJapanesePrompt(item)}</h2>
+          <p>{concreteCloze(item)}</p>
           <label htmlFor="review-answer">Your answer</label>
           <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type it in English…" autoComplete="off" />
-          {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.expression.expression}</b><br />{item.expression.example}</p></div>}
+          {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{concreteReviewTarget(item)}</b><br />{item.expression.example}</p></div>}
           <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? (isLastQuestion ? "Finish review" : "Next question") : "Check answer"}<span>{feedback && isLastQuestion ? "✓" : "→"}</span></button>
         </div>
       </div>

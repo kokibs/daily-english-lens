@@ -78,7 +78,13 @@ For every photo:
 - Never use generic placeholders such as "This moment stood out to me today" or "I wanted to remember this moment" when a specific subject, place, food, activity, or event is visible or stated.
 - Do not invent unseen companions, emotions, exact locations, or actions. A named location in the note may be used; visual evidence alone should not be used to guess a precise landmark.
 
-Then write a short chronological English diary joining those moments, plus a natural Japanese translation. Return 3-6 reusable conversational expressions tied to the most relevant photo. Each example must be based on that day's real content. Explanations should be concise Japanese.`;
+Then write a short chronological English diary joining those moments, plus a natural Japanese translation. Return 3-6 reusable conversational expressions tied to the most relevant photo. Each example must be based on that day's real content. Explanations should be concise Japanese.
+
+Quiz content rules:
+- Never put underscores, blanks, brackets, "something", or other placeholders in expression, japanese, or example.
+- The japanese field must be a complete clue containing the concrete place, food, object, activity, or person category from the photo or note. For example, write 「八坂神社を訪れてお参りする」, never 「___を訪れてお参りする」.
+- The expression and example must also use concrete nouns from that moment whenever known. Do not omit Yasaka Shrine, sashimi, badminton practice, or another known subject behind a placeholder.
+- Write the example as a complete sentence with useful context outside the expression, so the app can hide the learning phrase while still showing meaningful nouns and context.`;
 
 function isPhotoEntry(value: unknown): value is PhotoEntry {
   if (!value || typeof value !== "object") return false;
@@ -139,7 +145,9 @@ function validatedOutput(value: unknown, photos: PhotoEntry[]): VisionOutput {
     && result.expressions.length <= 6
     && result.expressions.every((item) => allowedIds.has(item.photoId)
       && [item.expression, item.japanese, item.example, item.explanation]
-        .every((text) => typeof text === "string" && text.trim()));
+        .every((text) => typeof text === "string" && text.trim())
+      && [item.expression, item.japanese, item.example]
+        .every((text) => !/(?:_{2,}|＿{2,}|\[\s*\]|\(\s*\))/.test(text)));
   if (typeof result.diaryEnglish !== "string" || !result.diaryEnglish.trim()
     || typeof result.diaryJapanese !== "string" || !result.diaryJapanese.trim()
     || !hasAllMoments || !expressionsAreValid) {
