@@ -1,98 +1,102 @@
 # Daily English Lens
 
-**Turn your day into English.**
+**Turn your day into English. — あなたの一日を、英語にしよう。**
 
-Daily English Lens is a mobile-first web app prototype that turns the photos and moments from a user’s day into personal English-learning material. Instead of labeling objects in a photo, it finds useful language for the experience behind the photo.
+[公開中のアプリを開く](https://daily-english-lens.vercel.app/)
 
-## Concept
+Daily English Lensは、1日の写真と思い出を自分だけの英語教材へ変える、モバイルファーストのWebアプリです。写真に写った物の名前を答えるだけではなく、その写真の背景にある体験を英語で表現します。
 
-Traditional vocabulary apps teach you words chosen by someone else.  
-Daily English Lens turns your own experiences into English learning material.
+## コンセプト
 
-A crowded train becomes **The train was packed.** A photo after practice becomes **I was worn out after practice.** Because each expression is attached to a real memory, it has a reason to stick.
+一般的な英語教材で学ぶのは、誰かが選んだ単語や例文です。
 
-The core loop is:
+Daily English Lensは、自分自身の体験から英語を学べる教材を作ります。
+
+混雑した電車の写真は **The train was packed.** に、練習後の写真は **I was worn out after practice.** になります。実際の記憶と英語表現が結びつくため、覚えやすく、日常会話でも自分の出来事を話せるようになります。
+
+学習の流れは次のとおりです。
 
 **Life → English → Memory → Review**
 
-## Why this exists
+## 解決したい課題
 
-Most learners know many isolated words but struggle to say what happened to them today. Daily English Lens starts with a question that is easier and more personal: “What would you tell a friend about this moment?”
+英単語を知っていても、「今日、自分に何があったか」を英語で話すのは簡単ではありません。Daily English Lensは「この瞬間を友達に話すなら、英語でどう表現するか？」という、自分に近い問いから学習を始めます。
 
-The prototype is designed to make that idea understandable in the first few seconds of a contest demo. It starts empty and uses only the photos a user adds.
+アプリは最初から用意された教材を表示せず、ユーザーが追加した写真だけを使います。毎日の出来事を英語日記、会話表現、翌日の復習へつなげ、就寝前などに約3分で続けられる学習体験を目指しています。
 
-## Main features
+## 主な機能
 
-- Add, remove, reorder, and annotate photos directly from the home dashboard
-- Upload up to ten photos with drag-and-drop or a file picker
-- Analyze the actual photo together with its optional note using a Vision-capable model
-- Generate a short bilingual diary grounded in each visible moment
-- Learn up to six conversational expressions tied back to individual photos
-- Sign in with Google and keep daily entries in a private Supabase account
-- Restore photos, diaries, and review material across browsers and devices
-- See each photo paired with the English sentence it generated
-- Listen to the generated English diary with the device's built-in English voice
-- Answer a one-question review directly on Home, or open the full review flow
-- Hear a lightweight success chime after a correct review answer, with a persistent sound toggle
-- Browse saved days in a visual photo archive
-- Responsive layouts for phones, tablets, and desktop screens
+- ホーム画面から写真の追加・削除・並べ替え・補足入力
+- ファイル選択またはドラッグ＆ドロップで、1日最大10枚まで追加
+- 写真そのものと任意の補足文をAIが一緒に解析
+- 各写真の出来事に基づく英文と日本語訳を生成
+- 1日をまとめた英語日記と、会話で使える表現を最大6件生成
+- Googleアカウントでログインし、写真と日記をユーザーごとに保存
+- ブラウザや端末を変えても、保存した日記と復習データを復元
+- 写真と、その写真から生成された英文を1対1で表示
+- 端末の英語音声による日記の読み上げ
+- ホーム画面の1問復習と、複数問題に取り組めるReview画面
+- 正解時の効果音と、保存されるサウンド設定
+- 過去の日記を写真から振り返れるアーカイブ
+- スマートフォン、タブレット、PCに対応したレスポンシブデザイン
 
-## Run locally
+## ローカルでの起動方法
 
-Requirements: Node.js 22.13 or newer.
+必要環境：Node.js 22.13以上
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+ブラウザで [http://localhost:3000](http://localhost:3000) を開きます。
 
-Add a local `.env.local` file before generating from photos:
+写真から英文を生成する前に、ローカルの`.env.local`へ次の環境変数を設定します。
 
 ```bash
 OPENAI_API_KEY=your_api_key
-# Optional; defaults to the cost-efficient vision model below.
+# 任意。未設定の場合は、以下の画像対応モデルを使用します。
 OPENAI_VISION_MODEL=gpt-5.6-luna
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
 ```
 
-For a production build:
+本番用ビルドは次のコマンドで確認できます。
 
 ```bash
 npm run build
 ```
 
-## Vision generation
+## 写真解析と英文生成
 
-The browser-side AI boundary lives in `lib/daily-english.ts`:
+ブラウザ側のAI呼び出し境界は`lib/daily-english.ts`にあります。
 
 ```ts
 generateDailyEnglish(photos: PhotoEntry[]): Promise<DailyEntry>
 ```
 
-The browser resizes photos so a ten-photo request remains below Vercel's request limit, then sends them to the same-origin `/api/generate` endpoint only when the user presses Generate. The authenticated Next.js route calls the OpenAI Responses API with image inputs and a strict JSON schema; the API key remains server-side.
+ブラウザは、10枚の写真を送ってもVercelのリクエスト上限を超えないよう画像を縮小します。「Generate」を押したときだけ、同一オリジンの`/api/generate`へ写真と補足文を送信します。認証済みのNext.js Route Handlerが、画像入力と厳密なJSON Schemaを使ってOpenAI Responses APIを呼び出します。APIキーはサーバー側だけで管理します。
 
-- `lib/daily-english.ts` owns the client boundary and local data model.
-- `lib/vision-generator.ts` validates requests, sends each image and note to the model, validates the structured result, and builds review cloze prompts.
-- `app/api/generate/route.ts` keeps the key in the hosted runtime, exposes the same-origin endpoint, and adds a production burst limit.
-- Generation errors are surfaced to the user and never silently replaced with tutorial or generic copy.
+- `lib/daily-english.ts`：ブラウザ側の生成処理とデータ型
+- `lib/vision-generator.ts`：入力検証、写真と補足文の送信、生成結果の検証、穴埋め問題の作成
+- `app/api/generate/route.ts`：APIキーをサーバー側で保持する生成エンドポイント
+- 生成に失敗した場合はエラーを表示し、チュートリアル文や汎用文へ勝手に置き換えません
 
-Daily entries are stored in Supabase Postgres and photos are stored in the private `daily-photos` bucket. Row Level Security limits both to the signed-in user. Older `localStorage` entries are migrated after the first successful Google login, then removed from the browser.
+日記データはSupabase Postgres、写真は非公開の`daily-photos`バケットへ保存します。Row Level Securityにより、ログインした本人だけが自分のデータを読み書きできます。以前の`localStorage`に日記が残っている場合は、Googleログイン後に一度だけクラウドへ移行し、端末から削除します。
 
-## Supabase and Google login
+## SupabaseとGoogleログインの設定
 
-1. Create a Supabase project and run `supabase/migrations/202608290001_google_auth_and_cloud_entries.sql` in its SQL editor.
-2. In Google Auth Platform, create a Web application OAuth client. Add the Supabase callback URL shown on the Supabase Google provider page as an authorized redirect URI.
-3. Enable Google in Supabase Authentication providers and enter that client ID and secret.
-4. Set the Supabase Site URL to the production domain. Add `http://localhost:3000/auth/callback` and the production `/auth/callback` URL to the redirect allow list.
-5. Put the project URL and publishable key in `.env.local` and in the Vercel Production and Preview environments.
+1. Supabaseプロジェクトを作成し、SQL Editorで`supabase/migrations/202608290001_google_auth_and_cloud_entries.sql`を実行します。
+2. Google Auth PlatformでWebアプリケーション用のOAuthクライアントを作成します。
+3. SupabaseのGoogle Provider画面に表示されるコールバックURLを、Google側の承認済みリダイレクトURIへ追加します。
+4. Supabase AuthenticationでGoogle Providerを有効にし、Client IDとClient Secretを設定します。
+5. SupabaseのSite URLを本番ドメインに設定し、`http://localhost:3000/auth/callback`と本番URLの`/auth/callback`をリダイレクト許可リストへ追加します。
+6. プロジェクトURLとPublishable Keyを`.env.local`およびVercelのProduction・Preview環境へ設定します。
 
-Only the publishable key uses `NEXT_PUBLIC_`. Never expose the Supabase service-role key or Google client secret to the browser.
+`NEXT_PUBLIC_`を付けるのは公開可能なPublishable Keyだけです。SupabaseのService Role KeyやGoogle Client Secretをブラウザへ公開しないでください。
 
-## Prototype data model
+## データ構造
 
 ```ts
 type DailyEntry = {
@@ -105,22 +109,26 @@ type DailyEntry = {
 };
 ```
 
-## Deploy with Vercel
+## Vercelへのデプロイ
 
-1. Push the repository to GitHub and import it from the Vercel dashboard.
-2. Keep the Framework Preset on `Next.js` and add `OPENAI_API_KEY` as a server-side environment variable for Production and Preview.
-3. Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` for Production and Preview.
-4. Optionally add `OPENAI_VISION_MODEL`; otherwise the app uses `gpt-5.6-luna`.
-5. Add one Vercel Firewall rate-limit rule for the path `/api/generate`: 5 requests per 10 minutes, counted by IP, with a `429` response.
-6. Deploy, then verify Google login, cloud restore, and generation in a signed-out private window and on a phone.
+1. リポジトリをGitHubへPushし、Vercel DashboardからImportします。
+2. Framework Presetを`Next.js`に設定します。
+3. `OPENAI_API_KEY`をProduction・Previewのサーバー用環境変数として追加します。
+4. `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`、`NEXT_PUBLIC_SITE_URL`をProduction・Previewへ追加します。
+5. 必要に応じて`OPENAI_VISION_MODEL`を追加します。未設定の場合は`gpt-5.6-luna`を使用します。
+6. Vercel Firewallで`/api/generate`に、IPごとに10分間5回、超過時は`429`を返すRate Limitルールを設定します。
+7. デプロイ後、シークレットウィンドウとスマートフォンでGoogleログイン、クラウド復元、写真からの生成を確認します。
 
-Never prefix the API key with `NEXT_PUBLIC_`; that would expose it to browsers.
+`OPENAI_API_KEY`に`NEXT_PUBLIC_`を付けないでください。付けるとAPIキーがブラウザへ公開されます。
 
-## Tech
+## 使用技術
 
 - React 19 + TypeScript
 - Next.js App Router
 - Tailwind CSS 4
-- CSS motion and responsive layout
-- Supabase Auth, Postgres, and private Storage
-- Browser `localStorage` for sound preference and one-time legacy migration
+- CSSアニメーションとレスポンシブレイアウト
+- OpenAI Responses API
+- Supabase Auth、Postgres、非公開Storage
+- Web Speech API、Web Audio API
+- Vercel
+- `localStorage`（サウンド設定と旧データの移行のみ）
