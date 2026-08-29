@@ -32,6 +32,11 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(dashboard, /Repeat all/);
   assert.match(dashboard, /Retry mistakes/);
   assert.match(dashboard, /Finish for now/);
+  assert.match(dashboard, /Choose a day/);
+  assert.match(dashboard, /ReviewDayPicker/);
+  assert.match(dashboard, /selectedReviewDate/);
+  assert.match(dashboard, /Choose another day/);
+  assert.match(dashboard, /entry\.expressions\.map/);
   assert.match(dashboard, /concreteJapanesePrompt\(item\)/);
   assert.match(dashboard, /concreteCloze\(item\)/);
   assert.match(dashboard, /concreteReviewTarget\(reviewItem\)/);

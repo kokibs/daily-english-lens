@@ -340,7 +340,19 @@ main { min-height: 100vh; }
 .save-error button { border: 0; border-radius: 8px; background: var(--green); color: white; padding: 8px 11px; font-size: 9px; font-weight: 800; }
 
 /* Full review */
+.review-day-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.review-day-card { min-width: 0; min-height: 150px; display: grid; grid-template-columns: 150px 1fr 28px; align-items: center; gap: 18px; overflow: hidden; border: 1px solid var(--line-dark); border-radius: 18px; background: var(--paper); color: var(--ink); padding: 12px 16px 12px 12px; text-align: left; box-shadow: 0 8px 24px rgba(29,54,46,.05); }
+.review-day-card:hover { border-color: var(--green); background: #f8faf4; box-shadow: 0 12px 28px rgba(29,54,46,.1); transform: translateY(-2px); }
+.review-day-thumbs { height: 124px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; overflow: hidden; border-radius: 12px; background: #e8ece4; }
+.review-day-thumbs img { width: 100%; height: 124px; object-fit: cover; }
+.review-day-copy { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.review-day-copy > span { color: var(--soft); font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.review-day-copy > strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; font: 400 16px/1.35 Georgia, serif; }
+.review-day-copy > small { color: var(--muted); font-size: 9px; }
+.review-day-card > b { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; background: var(--lime); color: var(--green); }
 .review-tools { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 14px; }
+.review-change-day { border: 0; background: transparent; color: var(--green); padding: 0; font-size: 9px; font-weight: 800; }
+.review-change-day:hover { text-decoration: underline; }
 .review-meter { width: 180px; height: 5px; overflow: hidden; border-radius: 99px; background: #dfe3db; }
 .review-meter span { display: block; height: 100%; border-radius: inherit; background: var(--lime); }
 .review-workspace { min-height: 570px; display: grid; grid-template-columns: 43% 57%; overflow: hidden; border: 1px solid var(--line-dark); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow); }
@@ -387,6 +399,8 @@ main { min-height: 100vh; }
 .review-complete-actions .review-repeat-mistakes { border-color: #d9e869; background: #fbfddd; }
 .review-complete-actions .review-repeat-mistakes > span { background: var(--lime); }
 .review-complete-actions button:disabled { cursor: default; opacity: .48; }
+.review-choose-day { min-height: 42px; margin-top: 12px; border: 1px solid var(--line-dark); border-radius: 11px; background: var(--paper); color: var(--green); padding: 0 16px; font-size: 10px; font-weight: 800; }
+.review-choose-day:hover { border-color: var(--green); background: #f7f9f2; }
 .review-finish { width: 100%; height: 50px; margin-top: 12px; display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: 11px; background: var(--green); color: white; padding: 0 10px 0 17px; font-size: 11px; font-weight: 800; }
 .review-finish span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--lime); color: var(--green); }
 
@@ -551,7 +565,15 @@ main { min-height: 100vh; }
   .save-dock > button { width: 100%; min-width: 0; }
 
   .review-tools { width: 100%; margin-top: 18px; align-items: stretch; }
+  .review-change-day { align-self: flex-start; min-height: 36px; }
   .review-tools .sound-toggle { align-self: flex-end; }
+  .review-day-list { grid-template-columns: 1fr; gap: 9px; }
+  .review-day-card { min-height: 118px; grid-template-columns: 112px 1fr 24px; gap: 12px; padding: 9px 10px 9px 9px; border-radius: 15px; }
+  .review-day-thumbs { height: 100px; border-radius: 10px; }
+  .review-day-thumbs img { height: 100px; }
+  .review-day-copy { gap: 6px; }
+  .review-day-copy > strong { -webkit-line-clamp: 2; font-size: 14px; }
+  .review-day-card > b { width: 24px; height: 24px; border-radius: 7px; }
   .review-meter { width: 100%; }
   .review-workspace { min-height: 0; grid-template-columns: 1fr; border-radius: 18px; }
   .review-workspace figure { min-height: 0; aspect-ratio: 4 / 3; }

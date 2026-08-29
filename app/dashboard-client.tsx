@@ -206,6 +206,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncIssue, setSyncIssue] = useState(false);
   const [quickReviewIndex, setQuickReviewIndex] = useState(0);
+  const [selectedReviewDate, setSelectedReviewDate] = useState<string | null>(null);
   const [reviewSessionIds, setReviewSessionIds] = useState<string[]>([]);
   const [reviewSessionIndex, setReviewSessionIndex] = useState(0);
   const [reviewMistakeIds, setReviewMistakeIds] = useState<string[]>([]);
@@ -290,7 +291,8 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   );
   const currentSessionReview = reviewComplete ? undefined : reviewSessionItems[reviewSessionIndex];
 
-  function startReviewSession(ids = reviewItems.map(reviewItemKey)) {
+  function startReviewSession(ids: string[], date: string) {
+    setSelectedReviewDate(date);
     setReviewSessionIds(ids);
     setReviewSessionIndex(0);
     setReviewMistakeIds([]);
@@ -299,8 +301,26 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setFeedback(null);
   }
 
+  function showReviewDays() {
+    setSelectedReviewDate(null);
+    setReviewSessionIds([]);
+    setReviewSessionIndex(0);
+    setReviewMistakeIds([]);
+    setReviewComplete(false);
+    setAnswer("");
+    setFeedback(null);
+  }
+
+  function selectReviewDay(entry: DailyEntry) {
+    startReviewSession(
+      entry.expressions.map((expression) => reviewItemKey({ entry, expression })),
+      entry.date,
+    );
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function navigate(next: Screen) {
-    if (next === "review") startReviewSession();
+    if (next === "review") showReviewDays();
     setScreen(next);
     if (next !== "today") setSavedNotice(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -446,6 +466,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       setActiveEntry(null);
       setSavedNotice(false);
       setQuickReviewIndex(0);
+      setSelectedReviewDate(null);
       setReviewSessionIds([]);
       setReviewSessionIndex(0);
       setReviewMistakeIds([]);
@@ -517,7 +538,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
 
   return (
     <main>
-      <Header user={user} screen={screen} reviewCount={reviewItems.length} onNavigate={navigate} onCreate={goToCreate} onSignOut={() => void signOut()} />
+      <Header user={user} screen={screen} reviewCount={savedEntries.length} onNavigate={navigate} onCreate={goToCreate} onSignOut={() => void signOut()} />
 
       {(loadingEntries || syncNotice) && (
         <div className={`cloud-status ${loadingEntries ? "loading" : ""} ${syncIssue ? "error" : ""}`} role="status">
@@ -569,24 +590,27 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       )}
 
       {screen === "review" && (
-        <ReviewScreen
-          item={currentSessionReview}
-          answer={answer}
-          feedback={feedback}
-          index={reviewSessionIndex}
-          total={reviewSessionItems.length}
-          complete={reviewComplete}
-          mistakeCount={reviewMistakeIds.length}
-          soundEnabled={quizSoundEnabled}
-          onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
-          onCheck={checkAnswer}
-          onNext={nextQuestion}
-          onRepeatAll={() => startReviewSession()}
-          onRepeatMistakes={() => startReviewSession(reviewMistakeIds)}
-          onFinish={() => navigate("home")}
-          onToggleSound={toggleQuizSound}
-          onCreate={goToCreate}
-        />
+        selectedReviewDate === null
+          ? <ReviewDayPicker entries={savedEntries} onSelect={selectReviewDay} onCreate={goToCreate} />
+          : <ReviewScreen
+              item={currentSessionReview}
+              answer={answer}
+              feedback={feedback}
+              index={reviewSessionIndex}
+              total={reviewSessionItems.length}
+              complete={reviewComplete}
+              mistakeCount={reviewMistakeIds.length}
+              soundEnabled={quizSoundEnabled}
+              onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
+              onCheck={checkAnswer}
+              onNext={nextQuestion}
+              onRepeatAll={() => startReviewSession(reviewSessionIds, selectedReviewDate)}
+              onRepeatMistakes={() => startReviewSession(reviewMistakeIds, selectedReviewDate)}
+              onChooseDay={showReviewDays}
+              onFinish={() => navigate("home")}
+              onToggleSound={toggleQuizSound}
+              onCreate={goToCreate}
+            />
       )}
 
       {screen === "history" && (
@@ -968,7 +992,37 @@ function ExpressionRow({ expression, index }: { expression: Expression; index: n
   );
 }
 
-function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onFinish, onToggleSound, onCreate }: {
+function ReviewDayPicker({ entries, onSelect, onCreate }: {
+  entries: DailyEntry[];
+  onSelect: (entry: DailyEntry) => void;
+  onCreate: () => void;
+}) {
+  const reviewableEntries = entries.filter((entry) => entry.expressions.length > 0);
+  if (!reviewableEntries.length) return <EmptyState title="No review yet" body="今日の英語を保存すると、日付を選んで復習できます。" onCreate={onCreate} />;
+
+  return (
+    <section className="app-screen review-picker-page section-shell reveal">
+      <div className="page-toolbar"><div><p className="kicker">Your review archive</p><h1>Choose a day</h1><p>復習したい日を選ぶと、その日の英語だけが出題されます。</p></div></div>
+      <div className="review-day-list">
+        {reviewableEntries.map((entry) => (
+          <button className="review-day-card" type="button" key={entry.id} onClick={() => onSelect(entry)}>
+            <div className="review-day-thumbs">
+              {entry.photos.slice(0, 3).map((photo) => <img src={photo.imageUrl} alt="" key={photo.id} />)}
+            </div>
+            <div className="review-day-copy">
+              <span>{formatDay(entry.date)}</span>
+              <strong>{entry.diaryEnglish}</strong>
+              <small>{entry.expressions.length} questions · {entry.photos.length} photos</small>
+            </div>
+            <b aria-hidden="true">→</b>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onChooseDay, onFinish, onToggleSound, onCreate }: {
   item?: ReviewItem;
   answer: string;
   feedback: Feedback;
@@ -982,6 +1036,7 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
   onNext: () => void;
   onRepeatAll: () => void;
   onRepeatMistakes: () => void;
+  onChooseDay: () => void;
   onFinish: () => void;
   onToggleSound: () => void;
   onCreate: () => void;
@@ -1004,6 +1059,7 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
             <button className="review-repeat-all" type="button" onClick={onRepeatAll}><span aria-hidden="true">↻</span><b>Repeat all</b><small>すべての問題をもう一度</small></button>
             <button className="review-repeat-mistakes" type="button" onClick={onRepeatMistakes} disabled={!mistakeCount}><span aria-hidden="true">!</span><b>Retry mistakes</b><small>{mistakeCount ? `間違えた${mistakeCount}問だけ` : "間違えた問題はありません"}</small></button>
           </div>
+          <button className="review-choose-day" type="button" onClick={onChooseDay}>← Choose another day</button>
           <button className="review-finish" type="button" onClick={onFinish}>Finish for now <span>→</span></button>
         </div>
       </section>
@@ -1014,7 +1070,7 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
   const isLastQuestion = index + 1 >= total;
   return (
     <section className="app-screen review-page section-shell reveal">
-      <div className="page-toolbar"><div><p className="kicker">Daily recall · {Math.min(index + 1, total)} of {total}</p><h1>Review yesterday</h1><p>写真の記憶から、英語を思い出そう。</p></div><div className="review-tools"><button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div></div>
+      <div className="page-toolbar"><div><p className="kicker">{formatDay(item.entry.date)} · {Math.min(index + 1, total)} of {total}</p><h1>Review this day</h1><p>写真の記憶から、この日の英語を思い出そう。</p></div><div className="review-tools"><button className="review-change-day" type="button" onClick={onChooseDay}>← Change day</button><button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div></div>
       <div className="review-workspace">
         <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
