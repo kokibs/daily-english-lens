@@ -27,6 +27,7 @@ export type AppUser = {
 
 type Screen = "home" | "today" | "review" | "history";
 type Feedback = "correct" | "almost" | "wrong" | null;
+type ReviewItem = { entry: DailyEntry; expression: Expression };
 
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
@@ -67,6 +68,10 @@ function formatDay(date: string, long = true) {
     ? { weekday: "long", month: "long", day: "numeric" }
     : { month: "short", day: "numeric" }
   ).format(new Date(`${date}T12:00:00`));
+}
+
+function reviewItemKey(item: ReviewItem) {
+  return `${item.entry.id}:${item.expression.id}`;
 }
 
 function todayLabel() {
@@ -178,7 +183,11 @@ export default function DashboardClient({ user }: { user: AppUser }) {
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncIssue, setSyncIssue] = useState(false);
-  const [reviewIndex, setReviewIndex] = useState(0);
+  const [quickReviewIndex, setQuickReviewIndex] = useState(0);
+  const [reviewSessionIds, setReviewSessionIds] = useState<string[]>([]);
+  const [reviewSessionIndex, setReviewSessionIndex] = useState(0);
+  const [reviewMistakeIds, setReviewMistakeIds] = useState<string[]>([]);
+  const [reviewComplete, setReviewComplete] = useState(false);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [quizSoundEnabled, setQuizSoundEnabled] = useState(true);
@@ -245,9 +254,31 @@ export default function DashboardClient({ user }: { user: AppUser }) {
     () => savedEntries.flatMap((entry) => entry.expressions.map((expression) => ({ entry, expression }))),
     [savedEntries],
   );
-  const currentReview = reviewItems[reviewIndex % Math.max(reviewItems.length, 1)];
+  const quickReview = reviewItems[quickReviewIndex % Math.max(reviewItems.length, 1)];
+  const reviewItemsById = useMemo(
+    () => new Map(reviewItems.map((item) => [reviewItemKey(item), item])),
+    [reviewItems],
+  );
+  const reviewSessionItems = useMemo(
+    () => reviewSessionIds.flatMap((id) => {
+      const item = reviewItemsById.get(id);
+      return item ? [item] : [];
+    }),
+    [reviewItemsById, reviewSessionIds],
+  );
+  const currentSessionReview = reviewComplete ? undefined : reviewSessionItems[reviewSessionIndex];
+
+  function startReviewSession(ids = reviewItems.map(reviewItemKey)) {
+    setReviewSessionIds(ids);
+    setReviewSessionIndex(0);
+    setReviewMistakeIds([]);
+    setReviewComplete(false);
+    setAnswer("");
+    setFeedback(null);
+  }
 
   function navigate(next: Screen) {
+    if (next === "review") startReviewSession();
     setScreen(next);
     if (next !== "today") setSavedNotice(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -392,7 +423,11 @@ export default function DashboardClient({ user }: { user: AppUser }) {
       setSavedEntries((entries) => entries.filter((entry) => entry.date !== activeEntry.date));
       setActiveEntry(null);
       setSavedNotice(false);
-      setReviewIndex(0);
+      setQuickReviewIndex(0);
+      setReviewSessionIds([]);
+      setReviewSessionIndex(0);
+      setReviewMistakeIds([]);
+      setReviewComplete(false);
       setAnswer("");
       setFeedback(null);
       setSyncNotice("写真と日記を削除しました。");
@@ -414,17 +449,24 @@ export default function DashboardClient({ user }: { user: AppUser }) {
   }
 
   function checkAnswer() {
-    if (!currentReview || !answer.trim()) return;
-    const expected = normalizeAnswer(currentReview.expression.expression);
+    const reviewItem = screen === "review" ? currentSessionReview : quickReview;
+    if (!reviewItem || !answer.trim()) return;
+    const expected = normalizeAnswer(reviewItem.expression.expression);
     const suffix = expected.split(" ").slice(1).join(" ");
     const actual = normalizeAnswer(answer);
+    let result: Exclude<Feedback, null>;
     if (actual === expected || (suffix && actual === suffix)) {
-      setFeedback("correct");
+      result = "correct";
       if (quizSoundEnabled) playSuccessChime();
     } else if (distance(actual, expected) <= 2 || (suffix && distance(actual, suffix) <= 2) || expected.includes(actual)) {
-      setFeedback("almost");
+      result = "almost";
     } else {
-      setFeedback("wrong");
+      result = "wrong";
+    }
+    setFeedback(result);
+    if (screen === "review" && result !== "correct") {
+      const id = reviewItemKey(reviewItem);
+      setReviewMistakeIds((ids) => ids.includes(id) ? ids : [...ids, id]);
     }
   }
 
@@ -441,7 +483,12 @@ export default function DashboardClient({ user }: { user: AppUser }) {
   }
 
   function nextQuestion() {
-    setReviewIndex((index) => (index + 1) % Math.max(reviewItems.length, 1));
+    if (screen === "review") {
+      if (reviewSessionIndex + 1 >= reviewSessionItems.length) setReviewComplete(true);
+      else setReviewSessionIndex((index) => index + 1);
+    } else {
+      setQuickReviewIndex((index) => (index + 1) % Math.max(reviewItems.length, 1));
+    }
     setAnswer("");
     setFeedback(null);
   }
@@ -467,7 +514,7 @@ export default function DashboardClient({ user }: { user: AppUser }) {
           generating={generating}
           generationError={generationError}
           savedEntries={savedEntries}
-          reviewItem={currentReview}
+          reviewItem={quickReview}
           answer={answer}
           feedback={feedback}
           soundEnabled={quizSoundEnabled}
@@ -501,15 +548,20 @@ export default function DashboardClient({ user }: { user: AppUser }) {
 
       {screen === "review" && (
         <ReviewScreen
-          item={currentReview}
+          item={currentSessionReview}
           answer={answer}
           feedback={feedback}
-          index={reviewIndex}
-          total={reviewItems.length}
+          index={reviewSessionIndex}
+          total={reviewSessionItems.length}
+          complete={reviewComplete}
+          mistakeCount={reviewMistakeIds.length}
           soundEnabled={quizSoundEnabled}
           onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
           onCheck={checkAnswer}
           onNext={nextQuestion}
+          onRepeatAll={() => startReviewSession()}
+          onRepeatMistakes={() => startReviewSession(reviewMistakeIds)}
+          onFinish={() => navigate("home")}
           onToggleSound={toggleQuizSound}
           onCreate={goToCreate}
         />
@@ -893,21 +945,50 @@ function ExpressionRow({ expression, index }: { expression: Expression; index: n
   );
 }
 
-function ReviewScreen({ item, answer, feedback, index, total, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onCreate }: {
-  item?: { entry: DailyEntry; expression: Expression };
+function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onFinish, onToggleSound, onCreate }: {
+  item?: ReviewItem;
   answer: string;
   feedback: Feedback;
   index: number;
   total: number;
+  complete: boolean;
+  mistakeCount: number;
   soundEnabled: boolean;
   onAnswer: (answer: string) => void;
   onCheck: () => void;
   onNext: () => void;
+  onRepeatAll: () => void;
+  onRepeatMistakes: () => void;
+  onFinish: () => void;
   onToggleSound: () => void;
   onCreate: () => void;
 }) {
+  if (complete) {
+    const correctCount = Math.max(total - mistakeCount, 0);
+    return (
+      <section className="app-screen review-page section-shell reveal">
+        <div className="review-complete-card">
+          <span className="review-complete-mark" aria-hidden="true">✓</span>
+          <p className="section-eyebrow">SESSION COMPLETE</p>
+          <h1>Review complete!</h1>
+          <p className="review-complete-copy">今日の復習はここでいったん終了です。</p>
+          <div className="review-score" aria-label={`${correctCount} correct and ${mistakeCount} to retry`}>
+            <div><strong>{correctCount}</strong><span>Correct</span></div>
+            <div><strong>{mistakeCount}</strong><span>To retry</span></div>
+            <div><strong>{total}</strong><span>Total</span></div>
+          </div>
+          <div className="review-complete-actions">
+            <button className="review-repeat-all" type="button" onClick={onRepeatAll}><span aria-hidden="true">↻</span><b>Repeat all</b><small>すべての問題をもう一度</small></button>
+            <button className="review-repeat-mistakes" type="button" onClick={onRepeatMistakes} disabled={!mistakeCount}><span aria-hidden="true">!</span><b>Retry mistakes</b><small>{mistakeCount ? `間違えた${mistakeCount}問だけ` : "間違えた問題はありません"}</small></button>
+          </div>
+          <button className="review-finish" type="button" onClick={onFinish}>Finish for now <span>→</span></button>
+        </div>
+      </section>
+    );
+  }
   if (!item) return <EmptyState title="No review yet" body="今日の英語を保存すると、明日ここで復習できます。" onCreate={onCreate} />;
   const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
+  const isLastQuestion = index + 1 >= total;
   return (
     <section className="app-screen review-page section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">Daily recall · {Math.min(index + 1, total)} of {total}</p><h1>Review yesterday</h1><p>写真の記憶から、英語を思い出そう。</p></div><div className="review-tools"><button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div></div>
@@ -920,7 +1001,7 @@ function ReviewScreen({ item, answer, feedback, index, total, soundEnabled, onAn
           <label htmlFor="review-answer">Your answer</label>
           <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type it in English…" autoComplete="off" />
           {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.expression.expression}</b><br />{item.expression.example}</p></div>}
-          <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? "Next question" : "Check answer"}<span>→</span></button>
+          <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? (isLastQuestion ? "Finish review" : "Next question") : "Check answer"}<span>{feedback && isLastQuestion ? "✓" : "→"}</span></button>
         </div>
       </div>
     </section>
