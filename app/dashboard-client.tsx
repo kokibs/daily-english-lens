@@ -16,7 +16,7 @@ import {
   PhotoEntry,
 } from "../lib/daily-english";
 import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
-import { normalizeReviewAnswer, reviewItemKey, reviewItemsForEntry, type ReviewItem } from "../lib/review-quiz";
+import { normalizeReviewAnswer, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
 
 export type AppUser = {
@@ -464,7 +464,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   function checkAnswer() {
     const reviewItem = screen === "review" ? currentSessionReview : quickReview;
     if (!reviewItem || !answer.trim()) return;
-    const expected = normalizeReviewAnswer(reviewItem.moment.english);
+    const expected = normalizeReviewAnswer(reviewItem.expression.example);
     const actual = normalizeReviewAnswer(answer);
     let result: Exclude<Feedback, null>;
     if (actual === expected) {
@@ -788,8 +788,8 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
   onOpenReview: () => void;
 }) {
   if (!item) return null;
-  const photo = item.entry.photos.find((candidate) => candidate.id === item.moment.photoId);
-  const target = item.moment.english;
+  const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
+  const target = item.expression.example;
 
   return (
     <section className="quick-review-section">
@@ -803,10 +803,10 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
           <div><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></div>
         </div>
         <div className="inline-quiz">
-          <div className="quiz-prompt"><span>PHOTO → ENGLISH</span><h3>{item.moment.japanese}</h3><p>写真を見て、英文を一文まるごと書いてみよう。</p></div>
+          <div className="quiz-prompt"><span>PHOTO → ENGLISH</span><h3>{reviewJapanesePrompt(item)}</h3><small className="review-word-count">{reviewWordCount(item)} words</small><p>写真をヒントに、短い例文を英語で書いてみよう。</p></div>
           <label htmlFor="home-review-answer">Your sentence</label>
           <div className={`inline-answer ${feedback || ""}`}>
-            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the whole sentence in English…" autoComplete="off" />
+            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the example sentence…" autoComplete="off" />
             <button type="button" onClick={feedback ? onNext : onCheck} disabled={!answer.trim()}>{feedback ? "Next" : "Check answer"}</button>
           </div>
           {feedback && (
@@ -1031,7 +1031,7 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
     );
   }
   if (!item) return <EmptyState title="No review yet" body="今日の英語を保存すると、ここで復習できます。" onCreate={onCreate} />;
-  const photo = item.entry.photos.find((candidate) => candidate.id === item.moment.photoId);
+  const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
   const isLastQuestion = index + 1 >= total;
   return (
     <section className="app-screen review-page section-shell reveal">
@@ -1040,11 +1040,12 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
         <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
           <span className="question-type">JAPANESE → ENGLISH</span>
-          <h2>{item.moment.japanese}</h2>
-          <p>写真を見て、英文を一文まるごと書いてみよう。</p>
+          <h2>{reviewJapanesePrompt(item)}</h2>
+          <small className="review-word-count">{reviewWordCount(item)} words</small>
+          <p>写真をヒントに、短い例文を英語で書いてみよう。</p>
           <label htmlFor="review-answer">Your sentence</label>
-          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the whole sentence in English…" autoComplete="off" />
-          {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.moment.english}</b></p></div>}
+          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the example sentence…" autoComplete="off" />
+          {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.expression.example}</b></p></div>}
           <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? (isLastQuestion ? "Finish review" : "Next question") : "Check answer"}<span>{feedback && isLastQuestion ? "✓" : "→"}</span></button>
         </div>
       </div>

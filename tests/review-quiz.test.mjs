@@ -1,42 +1,54 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizeReviewAnswer, reviewItemKey, reviewItemsForEntry } from "../lib/review-quiz.ts";
+import {
+  normalizeReviewAnswer,
+  reviewItemKey,
+  reviewItemsForEntry,
+  reviewJapanesePrompt,
+  reviewWordCount,
+} from "../lib/review-quiz.ts";
 
 const entry = {
   id: "saved-day",
-  date: "2026-08-30",
-  photos: [
-    { id: "louvre", imageUrl: "louvre-photo" },
-    { id: "venus", imageUrl: "venus-photo" },
-  ],
-  diaryEnglish: "I visited the Louvre Museum and saw the Venus de Milo.",
-  diaryJapanese: "ルーブル美術館を訪れ、ミロのヴィーナスを見た。",
-  moments: [
-    { photoId: "louvre", english: "I visited the Louvre Museum in Paris.", japanese: "パリのルーブル美術館を訪れた。" },
-    { photoId: "venus", english: "I saw the beautiful Venus de Milo.", japanese: "美しいミロのヴィーナスを見た。" },
-  ],
+  date: "2026-10-03",
+  photos: [{ id: "festival", imageUrl: "festival-photo" }],
+  diaryEnglish: "I went to the school festival at Kobe College and saw the decorations.",
+  diaryJapanese: "神戸女学院の文化祭に行き、装飾を見た。",
+  moments: [{ photoId: "festival", english: "I went to the school festival at Kobe College and saw the decorations.", japanese: "神戸女学院の文化祭に行き、装飾を見た。" }],
   expressions: [
-    { id: "old-expression", photoId: "louvre", expression: "visit a museum", japanese: "美術館を訪れる", example: "I visited a museum.", explanation: "", cloze: "I ______ a museum." },
+    { id: "festival-expression", photoId: "festival", expression: "go to a school festival", japanese: "神戸女学院の文化祭に行く", example: "I went to a school festival at Kobe College.", explanation: "学校祭に行ったことを話す。", cloze: "I ______ at Kobe College." },
+    { id: "decoration-expression", photoId: "festival", expression: "an interesting decoration", japanese: "面白い装飾", example: "I saw an interesting decoration with waves and stars.", explanation: "装飾について話す。", cloze: "I saw ______ with waves and stars." },
   ],
 };
 
-test("review uses one complete sentence per photo, not the stored expression example", () => {
+test("review uses the highlighted expression's Japanese clue and complete short example", () => {
   const items = reviewItemsForEntry(entry);
 
   assert.equal(items.length, 2);
-  assert.equal(items[0].moment.english, "I visited the Louvre Museum in Paris.");
-  assert.equal(items[0].moment.japanese, "パリのルーブル美術館を訪れた。");
-  assert.equal(reviewItemKey(items[0]), "saved-day:louvre");
+  assert.equal(reviewJapanesePrompt(items[0]), "神戸女学院の文化祭に行く");
+  assert.equal(items[0].expression.example, "I went to a school festival at Kobe College.");
+  assert.equal(reviewWordCount(items[0]), 9);
+  assert.equal(reviewItemKey(items[0]), "saved-day:festival-expression");
 });
 
-test("review ignores old entries without a usable photo sentence", () => {
-  assert.deepEqual(reviewItemsForEntry({ ...entry, moments: [] }), []);
-  assert.deepEqual(reviewItemsForEntry({ ...entry, moments: [{ photoId: "louvre", english: "", japanese: "美術館に行った。" }] }), []);
+test("review skips expressions without an answer and replaces legacy blank clues", () => {
+  const withBlankClue = {
+    ...entry,
+    expressions: [
+      { ...entry.expressions[0], japanese: "___の文化祭に行く" },
+      { ...entry.expressions[1], example: "" },
+    ],
+  };
+  const items = reviewItemsForEntry(withBlankClue);
+
+  assert.equal(items.length, 1);
+  assert.equal(reviewJapanesePrompt(items[0]), entry.moments[0].japanese);
 });
 
-test("answer normalization tolerates punctuation and case but not a partial sentence", () => {
-  const full = "I visited the Louvre Museum in Paris.";
-  assert.equal(normalizeReviewAnswer(full), normalizeReviewAnswer("i visited the louvre museum in paris"));
-  assert.notEqual(normalizeReviewAnswer(full), normalizeReviewAnswer("visited the Louvre Museum"));
+test("answer normalization tolerates punctuation and case but not only the extracted phrase", () => {
+  const example = entry.expressions[0].example;
+  assert.equal(normalizeReviewAnswer(example), normalizeReviewAnswer("i went to a school festival at kobe college"));
+  assert.notEqual(normalizeReviewAnswer(example), normalizeReviewAnswer("go to a school festival"));
+  assert.notEqual(normalizeReviewAnswer(example), normalizeReviewAnswer("I want to a school festival at Kobe College"));
 });

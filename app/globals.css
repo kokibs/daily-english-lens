@@ -217,6 +217,7 @@ main { min-height: 100vh; }
 .inline-quiz { padding: 30px 34px; display: flex; flex-direction: column; justify-content: center; }
 .quiz-prompt > span, .inline-quiz > label { color: var(--soft); font-size: 8px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
 .quiz-prompt h3 { margin: 7px 0 8px; font: 400 32px Georgia, serif; letter-spacing: -.035em; }
+.review-word-count { align-self: flex-start; display: inline-flex; margin: 0 0 10px; border: 1px solid var(--line-dark); border-radius: 99px; background: #f1f4ea; color: var(--green); padding: 5px 9px; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
 .quiz-prompt p { margin: 0 0 23px; color: var(--muted); font: italic 15px Georgia, serif; }
 .inline-quiz > label { margin-bottom: 7px; }
 .inline-answer { min-height: 54px; display: flex; align-items: center; overflow: hidden; border: 1px solid var(--line-dark); border-radius: 11px; background: white; }

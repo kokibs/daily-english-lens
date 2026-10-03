@@ -85,7 +85,7 @@ Quiz content rules:
 - The japanese field must be a complete clue containing the concrete place, food, object, activity, or person category from the photo or note. For example, write 「八坂神社を訪れてお参りする」, never 「___を訪れてお参りする」.
 - The expression and example must also use concrete nouns from that moment whenever known. Do not omit Yasaka Shrine, sashimi, badminton practice, or another known subject behind a placeholder.
 - Make each reusable expression at least two words long, so its review question tests a meaningful phrase rather than only one isolated word.
-- Write the example as a complete sentence with useful context outside the expression, so the app can hide the learning phrase while still showing meaningful nouns and context.`;
+- Write each example as a short complete sentence, ideally 6-12 words, with concrete details from the photo or note. The learner will type this whole example in review, so avoid long compound sentences.`;
 
 function isPhotoEntry(value: unknown): value is PhotoEntry {
   if (!value || typeof value !== "object") return false;
