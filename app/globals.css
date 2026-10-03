@@ -515,7 +515,7 @@ main { min-height: 100vh; }
   .quiz-prompt h3 { font-size: 29px; }
   .inline-answer { flex-wrap: wrap; overflow: visible; background: transparent; border: 0; }
   .inline-answer > span { height: 52px; display: flex; align-items: center; border: 1px solid var(--line-dark); border-right: 0; border-radius: 11px 0 0 11px; background: white; }
-  .inline-answer input { height: 52px; border: 1px solid var(--line-dark); border-left: 0; border-radius: 0 11px 11px 0; background: white; font-size: 20px; }
+  .inline-answer input { height: 52px; border: 1px solid var(--line-dark); border-radius: 11px; background: white; font-size: 20px; }
   .inline-answer button { flex: 0 0 100%; min-height: 48px; margin-top: 8px; border-radius: 10px; }
   .inline-answer:focus-within { box-shadow: none; }
   .quiz-footer { align-items: center; }

@@ -37,11 +37,11 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(dashboard, /selectedReviewDate/);
   assert.match(dashboard, /Choose another day/);
   assert.match(dashboard, /entry\.expressions\.map/);
-  assert.match(dashboard, /concreteJapanesePrompt\(item\)/);
-  assert.match(dashboard, /concreteCloze\(item\)/);
-  assert.match(dashboard, /concreteReviewTarget\(reviewItem\)/);
-  assert.match(dashboard, /Complete the expression:/);
-  assert.match(dashboard, /targetWords\.map/);
+  assert.match(dashboard, /reviewItemsForEntry/);
+  assert.match(dashboard, /item\.moment\.japanese/);
+  assert.match(dashboard, /item\.moment\.english/);
+  assert.match(dashboard, /英文を一文まるごと書いてみよう/);
+  assert.doesNotMatch(dashboard, /Complete the expression:/);
   assert.doesNotMatch(dashboard, /learningWords/);
   assert.doesNotMatch(dashboard, /reviewSessionIndex \+ 1\) %/);
   assert.match(dashboard, /Mobile navigation/);

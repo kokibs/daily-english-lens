@@ -16,6 +16,7 @@ import {
   PhotoEntry,
 } from "../lib/daily-english";
 import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
+import { normalizeReviewAnswer, reviewItemKey, reviewItemsForEntry, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
 
 export type AppUser = {
@@ -27,7 +28,6 @@ export type AppUser = {
 
 type Screen = "home" | "today" | "review" | "history";
 type Feedback = "correct" | "almost" | "wrong" | null;
-type ReviewItem = { entry: DailyEntry; expression: Expression };
 
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
@@ -70,38 +70,8 @@ function formatDay(date: string, long = true) {
   ).format(new Date(`${date}T12:00:00`));
 }
 
-function reviewItemKey(item: ReviewItem) {
-  return `${item.entry.id}:${item.expression.id}`;
-}
-
-function hasPlaceholder(value: string) {
-  return /(?:_{2,}|＿{2,}|\[\s*\]|\(\s*\))/.test(value);
-}
-
-function concreteReviewTarget(item: ReviewItem) {
-  return hasPlaceholder(item.expression.expression)
-    ? item.expression.example
-    : item.expression.expression;
-}
-
-function concreteJapanesePrompt(item: ReviewItem) {
-  if (!hasPlaceholder(item.expression.japanese)) return item.expression.japanese;
-  return item.entry.moments?.find((moment) => moment.photoId === item.expression.photoId)?.japanese
-    ?? item.entry.diaryJapanese
-    ?? item.expression.japanese;
-}
-
-function concreteCloze(item: ReviewItem) {
-  const targetWords = concreteReviewTarget(item).trim().split(/\s+/).filter(Boolean);
-  return `Complete the expression: ${targetWords.map(() => "______").join(" ")}`;
-}
-
 function todayLabel() {
   return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "Asia/Tokyo" }).format(new Date());
-}
-
-function normalizeAnswer(value: string) {
-  return value.trim().toLowerCase().replace(/[.!?]/g, "").replace(/\s+/g, " ");
 }
 
 function generationUsage() {
@@ -274,7 +244,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   }, [user.id]);
 
   const reviewItems = useMemo(
-    () => savedEntries.flatMap((entry) => entry.expressions.map((expression) => ({ entry, expression }))),
+    () => savedEntries.flatMap(reviewItemsForEntry),
     [savedEntries],
   );
   const quickReview = reviewItems[quickReviewIndex % Math.max(reviewItems.length, 1)];
@@ -313,7 +283,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
 
   function selectReviewDay(entry: DailyEntry) {
     startReviewSession(
-      entry.expressions.map((expression) => reviewItemKey({ entry, expression })),
+      reviewItemsForEntry(entry).map(reviewItemKey),
       entry.date,
     );
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -494,14 +464,13 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   function checkAnswer() {
     const reviewItem = screen === "review" ? currentSessionReview : quickReview;
     if (!reviewItem || !answer.trim()) return;
-    const expected = normalizeAnswer(concreteReviewTarget(reviewItem));
-    const suffix = expected.split(" ").slice(1).join(" ");
-    const actual = normalizeAnswer(answer);
+    const expected = normalizeReviewAnswer(reviewItem.moment.english);
+    const actual = normalizeReviewAnswer(answer);
     let result: Exclude<Feedback, null>;
-    if (actual === expected || (suffix && actual === suffix)) {
+    if (actual === expected) {
       result = "correct";
       if (quizSoundEnabled) playSuccessChime();
-    } else if (distance(actual, expected) <= 2 || (suffix && distance(actual, suffix) <= 2) || expected.includes(actual)) {
+    } else if (distance(actual, expected) <= 2) {
       result = "almost";
     } else {
       result = "wrong";
@@ -665,7 +634,7 @@ function Dashboard(props: {
   generating: boolean;
   generationError: string | null;
   savedEntries: DailyEntry[];
-  reviewItem?: { entry: DailyEntry; expression: Expression };
+  reviewItem?: ReviewItem;
   answer: string;
   feedback: Feedback;
   soundEnabled: boolean;
@@ -808,7 +777,7 @@ function ProgressRail({ photoCount }: { photoCount: number }) {
 }
 
 function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onOpenReview }: {
-  item?: { entry: DailyEntry; expression: Expression };
+  item?: ReviewItem;
   answer: string;
   feedback: Feedback;
   soundEnabled: boolean;
@@ -819,17 +788,14 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
   onOpenReview: () => void;
 }) {
   if (!item) return null;
-  const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
-  const target = concreteReviewTarget(item);
-  const words = target.split(" ");
-  const prefix = words.length > 1 ? words[0] : "";
-  const prompt = prefix ? `Type the word after “${prefix}”` : "Type the expression";
+  const photo = item.entry.photos.find((candidate) => candidate.id === item.moment.photoId);
+  const target = item.moment.english;
 
   return (
     <section className="quick-review-section">
       <div className="section-title-row compact">
         <span className="step-number secondary">3</span>
-        <div><p className="section-eyebrow">SECONDARY · YESTERDAY</p><h2>Quick review</h2><small>昨日の写真と、1問だけ。</small></div>
+        <div><p className="section-eyebrow">SECONDARY · SAVED PHOTO</p><h2>Quick review</h2><small>保存した写真から、1問だけ。</small></div>
       </div>
       <div className="quick-review-card">
         <div className="quick-memory">
@@ -837,17 +803,16 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
           <div><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></div>
         </div>
         <div className="inline-quiz">
-          <div className="quiz-prompt"><span>Yesterday&apos;s expression</span><h3>{concreteJapanesePrompt(item)}</h3><p>{concreteCloze(item)}</p></div>
-          <label htmlFor="home-review-answer">{prompt}</label>
+          <div className="quiz-prompt"><span>PHOTO → ENGLISH</span><h3>{item.moment.japanese}</h3><p>写真を見て、英文を一文まるごと書いてみよう。</p></div>
+          <label htmlFor="home-review-answer">Your sentence</label>
           <div className={`inline-answer ${feedback || ""}`}>
-            {prefix && <span>{prefix}</span>}
-            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="________" autoComplete="off" />
+            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the whole sentence in English…" autoComplete="off" />
             <button type="button" onClick={feedback ? onNext : onCheck} disabled={!answer.trim()}>{feedback ? "Next" : "Check answer"}</button>
           </div>
           {feedback && (
             <div className={`inline-feedback ${feedback}`}>
               <span>{feedback === "correct" ? "✓" : "!"}</span>
-              <p><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"} <b>{target}</b></strong><small>{item.expression.example}</small></p>
+              <p><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><small>{target}</small></p>
             </div>
           )}
           <div className="quiz-footer">
@@ -972,7 +937,7 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
       </section>
 
       <div className="save-dock">
-        <div><span className="save-icon">{saved ? "✓" : saving ? "↻" : "♡"}</span><p><strong>{saved ? "Saved to your account." : saving ? "Saving your day…" : "Keep today in your memory."}</strong><small>{saved ? "Available on your other devices." : "Save these expressions for tomorrow's review."}</small></p></div>
+        <div><span className="save-icon">{saved ? "✓" : saving ? "↻" : "♡"}</span><p><strong>{saved ? "Saved to your account." : saving ? "Saving your day…" : "Keep today in your memory."}</strong><small>{saved ? "Available on your other devices." : "Save today's sentences for review."}</small></p></div>
         <button type="button" onClick={saved ? onReview : onSave} disabled={saving}>{saved ? "Start review" : saving ? "Saving…" : "Save today's English"}<span>→</span></button>
       </div>
       {saveError && <div className="save-error" role="alert">{saveError} <button type="button" onClick={onSave}>Try again</button></div>}
@@ -997,7 +962,7 @@ function ReviewDayPicker({ entries, onSelect, onCreate }: {
   onSelect: (entry: DailyEntry) => void;
   onCreate: () => void;
 }) {
-  const reviewableEntries = entries.filter((entry) => entry.expressions.length > 0);
+  const reviewableEntries = entries.filter((entry) => reviewItemsForEntry(entry).length > 0);
   if (!reviewableEntries.length) return <EmptyState title="No review yet" body="今日の英語を保存すると、日付を選んで復習できます。" onCreate={onCreate} />;
 
   return (
@@ -1012,7 +977,7 @@ function ReviewDayPicker({ entries, onSelect, onCreate }: {
             <div className="review-day-copy">
               <span>{formatDay(entry.date)}</span>
               <strong>{entry.diaryEnglish}</strong>
-              <small>{entry.expressions.length} questions · {entry.photos.length} photos</small>
+              <small>{reviewItemsForEntry(entry).length} questions · {entry.photos.length} photos</small>
             </div>
             <b aria-hidden="true">→</b>
           </button>
@@ -1065,8 +1030,8 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
       </section>
     );
   }
-  if (!item) return <EmptyState title="No review yet" body="今日の英語を保存すると、明日ここで復習できます。" onCreate={onCreate} />;
-  const photo = item.entry.photos.find((candidate) => candidate.id === item.expression.photoId) ?? item.entry.photos[0];
+  if (!item) return <EmptyState title="No review yet" body="今日の英語を保存すると、ここで復習できます。" onCreate={onCreate} />;
+  const photo = item.entry.photos.find((candidate) => candidate.id === item.moment.photoId);
   const isLastQuestion = index + 1 >= total;
   return (
     <section className="app-screen review-page section-shell reveal">
@@ -1075,11 +1040,11 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
         <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
           <span className="question-type">JAPANESE → ENGLISH</span>
-          <h2>{concreteJapanesePrompt(item)}</h2>
-          <p>{concreteCloze(item)}</p>
-          <label htmlFor="review-answer">Your answer</label>
-          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type it in English…" autoComplete="off" />
-          {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{concreteReviewTarget(item)}</b><br />{item.expression.example}</p></div>}
+          <h2>{item.moment.japanese}</h2>
+          <p>写真を見て、英文を一文まるごと書いてみよう。</p>
+          <label htmlFor="review-answer">Your sentence</label>
+          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the whole sentence in English…" autoComplete="off" />
+          {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.moment.english}</b></p></div>}
           <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? (isLastQuestion ? "Finish review" : "Next question") : "Check answer"}<span>{feedback && isLastQuestion ? "✓" : "→"}</span></button>
         </div>
       </div>
