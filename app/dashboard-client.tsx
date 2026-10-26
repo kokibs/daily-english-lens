@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- User-selected data URLs stay local and cannot use the Next image optimizer. */
 
-import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   approximatePhotoTime,
@@ -16,7 +16,7 @@ import {
   PhotoEntry,
 } from "../lib/daily-english";
 import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
-import { normalizeReviewAnswer, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, type ReviewItem } from "../lib/review-quiz";
+import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
 
 export type AppUser = {
@@ -27,7 +27,7 @@ export type AppUser = {
 };
 
 type Screen = "home" | "today" | "review" | "history";
-type Feedback = "correct" | "almost" | "wrong" | null;
+type Feedback = ReviewGrade | null;
 
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
@@ -101,19 +101,6 @@ function recordGeneration() {
   }
 }
 
-function distance(a: string, b: string) {
-  const matrix = Array.from({ length: b.length + 1 }, (_, index) => [index]);
-  for (let index = 0; index <= a.length; index += 1) matrix[0][index] = index;
-  for (let row = 1; row <= b.length; row += 1) {
-    for (let column = 1; column <= a.length; column += 1) {
-      matrix[row][column] = b[row - 1] === a[column - 1]
-        ? matrix[row - 1][column - 1]
-        : Math.min(matrix[row - 1][column - 1], matrix[row][column - 1], matrix[row - 1][column]) + 1;
-    }
-  }
-  return matrix[b.length][a.length];
-}
-
 async function optimizedImageUrl(file: File) {
   try {
     const bitmap = await createImageBitmap(file);
@@ -183,6 +170,10 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const [reviewComplete, setReviewComplete] = useState(false);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const [gradingAnswer, setGradingAnswer] = useState(false);
+  const [gradingError, setGradingError] = useState<string | null>(null);
+  const gradingInFlight = useRef(false);
+  const gradingEpoch = useRef(0);
   const [quizSoundEnabled, setQuizSoundEnabled] = useState(true);
 
   useEffect(() => {
@@ -261,7 +252,21 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   );
   const currentSessionReview = reviewComplete ? undefined : reviewSessionItems[reviewSessionIndex];
 
+  function invalidateReviewCheck() {
+    gradingEpoch.current += 1;
+    gradingInFlight.current = false;
+    setGradingAnswer(false);
+    setGradingError(null);
+  }
+
+  function updateReviewAnswer(value: string) {
+    invalidateReviewCheck();
+    setAnswer(value);
+    setFeedback(null);
+  }
+
   function startReviewSession(ids: string[], date: string) {
+    invalidateReviewCheck();
     setSelectedReviewDate(date);
     setReviewSessionIds(ids);
     setReviewSessionIndex(0);
@@ -272,6 +277,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   }
 
   function showReviewDays() {
+    invalidateReviewCheck();
     setSelectedReviewDate(null);
     setReviewSessionIds([]);
     setReviewSessionIndex(0);
@@ -290,6 +296,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   }
 
   function navigate(next: Screen) {
+    invalidateReviewCheck();
     if (next === "review") showReviewDays();
     setScreen(next);
     if (next !== "today") setSavedNotice(false);
@@ -297,6 +304,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   }
 
   function goToCreate() {
+    invalidateReviewCheck();
     setScreen("home");
     setSavedNotice(false);
     setSaveError(null);
@@ -415,6 +423,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   }
 
   function openEntry(entry: DailyEntry) {
+    invalidateReviewCheck();
     setActiveEntry(entry);
     setSavedNotice(true);
     setSaveError(null);
@@ -441,6 +450,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       setReviewSessionIndex(0);
       setReviewMistakeIds([]);
       setReviewComplete(false);
+      invalidateReviewCheck();
       setAnswer("");
       setFeedback(null);
       setSyncNotice("写真と日記を削除しました。");
@@ -461,20 +471,34 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     router.refresh();
   }
 
-  function checkAnswer() {
+  async function checkAnswer() {
     const reviewItem = screen === "review" ? currentSessionReview : quickReview;
-    if (!reviewItem || !answer.trim()) return;
+    if (!reviewItem || !answer.trim() || gradingInFlight.current) return;
     const expected = normalizeReviewAnswer(reviewItem.expression.example);
     const actual = normalizeReviewAnswer(answer);
-    let result: Exclude<Feedback, null>;
-    if (actual === expected) {
-      result = "correct";
-      if (quizSoundEnabled) playSuccessChime();
-    } else if (distance(actual, expected) <= 2) {
-      result = "almost";
-    } else {
-      result = "wrong";
+    const epoch = ++gradingEpoch.current;
+    setGradingError(null);
+    let result: ReviewGrade;
+    if (actual === expected) result = "correct";
+    else {
+      gradingInFlight.current = true;
+      setGradingAnswer(true);
+      try {
+        result = await requestReviewGrade(reviewJapanesePrompt(reviewItem), reviewItem.expression.example, answer);
+      } catch (error) {
+        if (epoch === gradingEpoch.current) {
+          setGradingError(error instanceof Error ? error.message : "回答を判定できませんでした。もう一度お試しください。");
+        }
+        return;
+      } finally {
+        if (epoch === gradingEpoch.current) {
+          gradingInFlight.current = false;
+          setGradingAnswer(false);
+        }
+      }
     }
+    if (epoch !== gradingEpoch.current) return;
+    if (result === "correct" && quizSoundEnabled) playSuccessChime();
     setFeedback(result);
     if (screen === "review" && result !== "correct") {
       const id = reviewItemKey(reviewItem);
@@ -495,6 +519,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   }
 
   function nextQuestion() {
+    invalidateReviewCheck();
     if (screen === "review") {
       if (reviewSessionIndex + 1 >= reviewSessionItems.length) setReviewComplete(true);
       else setReviewSessionIndex((index) => index + 1);
@@ -529,6 +554,8 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
           reviewItem={quickReview}
           answer={answer}
           feedback={feedback}
+          grading={gradingAnswer}
+          gradingError={gradingError}
           soundEnabled={quizSoundEnabled}
           onPick={() => document.getElementById("photo-upload-input")?.click()}
           onFileInput={handleFileInput}
@@ -542,8 +569,8 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
           onNote={(id, note) => setPhotos((items) => items.map((item) => item.id === id ? { ...item, note } : item))}
           onClear={() => { setPhotos([]); setSelectedPhotoId(null); }}
           onGenerate={() => void createEnglish()}
-          onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
-          onCheck={checkAnswer}
+          onAnswer={updateReviewAnswer}
+          onCheck={() => void checkAnswer()}
           onNext={nextQuestion}
           onToggleSound={toggleQuizSound}
           onOpenReview={() => navigate("review")}
@@ -565,13 +592,15 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
               item={currentSessionReview}
               answer={answer}
               feedback={feedback}
+              grading={gradingAnswer}
+              gradingError={gradingError}
               index={reviewSessionIndex}
               total={reviewSessionItems.length}
               complete={reviewComplete}
               mistakeCount={reviewMistakeIds.length}
               soundEnabled={quizSoundEnabled}
-              onAnswer={(value) => { setAnswer(value); setFeedback(null); }}
-              onCheck={checkAnswer}
+              onAnswer={updateReviewAnswer}
+              onCheck={() => void checkAnswer()}
               onNext={nextQuestion}
               onRepeatAll={() => startReviewSession(reviewSessionIds, selectedReviewDate)}
               onRepeatMistakes={() => startReviewSession(reviewMistakeIds, selectedReviewDate)}
@@ -637,6 +666,8 @@ function Dashboard(props: {
   reviewItem?: ReviewItem;
   answer: string;
   feedback: Feedback;
+  grading: boolean;
+  gradingError: string | null;
   soundEnabled: boolean;
   onPick: () => void;
   onFileInput: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -749,6 +780,8 @@ function Dashboard(props: {
           item={props.reviewItem}
           answer={props.answer}
           feedback={props.feedback}
+          grading={props.grading}
+          gradingError={props.gradingError}
           soundEnabled={props.soundEnabled}
           onAnswer={props.onAnswer}
           onCheck={props.onCheck}
@@ -776,10 +809,12 @@ function ProgressRail({ photoCount }: { photoCount: number }) {
   );
 }
 
-function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onOpenReview }: {
+function QuickReview({ item, answer, feedback, grading, gradingError, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onOpenReview }: {
   item?: ReviewItem;
   answer: string;
   feedback: Feedback;
+  grading: boolean;
+  gradingError: string | null;
   soundEnabled: boolean;
   onAnswer: (answer: string) => void;
   onCheck: () => void;
@@ -803,12 +838,13 @@ function QuickReview({ item, answer, feedback, soundEnabled, onAnswer, onCheck, 
           <div><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></div>
         </div>
         <div className="inline-quiz">
-          <div className="quiz-prompt"><span>PHOTO → ENGLISH</span><h3>{reviewJapanesePrompt(item)}</h3><small className="review-word-count">{reviewWordCount(item)} words</small><p>写真をヒントに、短い例文を英語で書いてみよう。</p></div>
+          <div className="quiz-prompt"><span>PHOTO → ENGLISH</span><h3>{reviewJapanesePrompt(item)}</h3><small className="review-word-count">参考例文: {reviewWordCount(item)} words</small><p>写真をヒントに英文を書こう。意味が同じなら、言い換えでも正解です。</p></div>
           <label htmlFor="home-review-answer">Your sentence</label>
           <div className={`inline-answer ${feedback || ""}`}>
-            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the example sentence…" autoComplete="off" />
-            <button type="button" onClick={feedback ? onNext : onCheck} disabled={!answer.trim()}>{feedback ? "Next" : "Check answer"}</button>
+            <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !grading) { if (feedback) onNext(); else onCheck(); } }} placeholder="Write it in your own English…" autoComplete="off" disabled={grading} />
+            <button type="button" onClick={feedback ? onNext : onCheck} disabled={!answer.trim() || grading}>{grading ? "Checking…" : feedback ? "Next" : "Check answer"}</button>
           </div>
+          {gradingError && <p className="review-check-error" role="alert">{gradingError}</p>}
           {feedback && (
             <div className={`inline-feedback ${feedback}`}>
               <span>{feedback === "correct" ? "✓" : "!"}</span>
@@ -987,10 +1023,12 @@ function ReviewDayPicker({ entries, onSelect, onCreate }: {
   );
 }
 
-function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onChooseDay, onFinish, onToggleSound, onCreate }: {
+function ReviewScreen({ item, answer, feedback, grading, gradingError, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onChooseDay, onFinish, onToggleSound, onCreate }: {
   item?: ReviewItem;
   answer: string;
   feedback: Feedback;
+  grading: boolean;
+  gradingError: string | null;
   index: number;
   total: number;
   complete: boolean;
@@ -1041,12 +1079,13 @@ function ReviewScreen({ item, answer, feedback, index, total, complete, mistakeC
         <div className="review-question">
           <span className="question-type">JAPANESE → ENGLISH</span>
           <h2>{reviewJapanesePrompt(item)}</h2>
-          <small className="review-word-count">{reviewWordCount(item)} words</small>
-          <p>写真をヒントに、短い例文を英語で書いてみよう。</p>
+          <small className="review-word-count">参考例文: {reviewWordCount(item)} words</small>
+          <p>写真をヒントに英文を書こう。意味が同じなら、言い換えでも正解です。</p>
           <label htmlFor="review-answer">Your sentence</label>
-          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { if (feedback) onNext(); else onCheck(); } }} placeholder="Type the example sentence…" autoComplete="off" />
+          <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !grading) { if (feedback) onNext(); else onCheck(); } }} placeholder="Write it in your own English…" autoComplete="off" disabled={grading} />
+          {gradingError && <p className="review-check-error" role="alert">{gradingError}</p>}
           {feedback && <div className={`review-feedback ${feedback}`}><strong>{feedback === "correct" ? "Correct!" : feedback === "almost" ? "Almost!" : "Try again"}</strong><p><b>{item.expression.example}</b></p></div>}
-          <button className="review-submit" type="button" disabled={!answer.trim()} onClick={feedback ? onNext : onCheck}>{feedback ? (isLastQuestion ? "Finish review" : "Next question") : "Check answer"}<span>{feedback && isLastQuestion ? "✓" : "→"}</span></button>
+          <button className="review-submit" type="button" disabled={!answer.trim() || grading} onClick={feedback ? onNext : onCheck}>{grading ? "Checking…" : feedback ? (isLastQuestion ? "Finish review" : "Next question") : "Check answer"}<span>{feedback && isLastQuestion ? "✓" : "→"}</span></button>
         </div>
       </div>
     </section>

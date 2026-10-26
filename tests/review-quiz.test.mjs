@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   normalizeReviewAnswer,
+  requestReviewGrade,
   reviewItemKey,
   reviewItemsForEntry,
   reviewJapanesePrompt,
@@ -51,4 +52,32 @@ test("answer normalization tolerates punctuation and case but not only the extra
   assert.equal(normalizeReviewAnswer(example), normalizeReviewAnswer("i went to a school festival at kobe college"));
   assert.notEqual(normalizeReviewAnswer(example), normalizeReviewAnswer("go to a school festival"));
   assert.notEqual(normalizeReviewAnswer(example), normalizeReviewAnswer("I want to a school festival at Kobe College"));
+});
+
+test("review asks the server to judge paraphrases against the visible clue", async () => {
+  let captured;
+  const fakeFetch = async (url, init) => {
+    captured = { url, init, body: JSON.parse(init.body) };
+    return Response.json({ grade: "correct" });
+  };
+
+  const grade = await requestReviewGrade(
+    "神戸女学院の文化祭に行く",
+    "I went to a school festival at Kobe College.",
+    "I attended Kobe College's school festival.",
+    fakeFetch,
+  );
+
+  assert.equal(grade, "correct");
+  assert.equal(captured.url, "/api/review/check");
+  assert.equal(captured.body.clue, "神戸女学院の文化祭に行く");
+  assert.equal(captured.body.answer, "I attended Kobe College's school festival.");
+});
+
+test("review leaves a failed grading request retryable", async () => {
+  await assert.rejects(
+    requestReviewGrade("文化祭に行く", "I went to a school festival.", "I attended a school festival.",
+      async () => Response.json({ error: "回答を判定できませんでした。" }, { status: 502 })),
+    /回答を判定できませんでした/,
+  );
 });

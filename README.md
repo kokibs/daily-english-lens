@@ -36,6 +36,7 @@ Daily English Lensは、自分自身の体験から英語を学べる教材を�
 - 写真と、その写真から生成された英文を1対1で表示
 - 端末の英語音声による日記の読み上げ
 - ホーム画面の1問復習と、日付を選んでその日だけを学べるReview画面（1周ごとの結果・全問再挑戦・間違えた問題だけの再挑戦に対応）
+- 復習では例文と同じ表現でなくても、意味の通る言い換えをAIが正解として判定
 - 復習問題では写真に写る場所・食べ物・活動などの具体的な名詞を日本語のヒントに残し、覚える英語表現だけを穴埋めで出題
 - 正解時の効果音と、保存されるサウンド設定
 - 過去の日記を写真から振り返れるアーカイブ
@@ -83,6 +84,7 @@ generateDailyEnglish(photos: PhotoEntry[]): Promise<DailyEntry>
 - `lib/daily-english.ts`：ブラウザ側の生成処理とデータ型
 - `lib/vision-generator.ts`：入力検証、写真と補足文の送信、生成結果の検証、穴埋め問題の作成
 - `app/api/generate/route.ts`：APIキーをサーバー側で保持する生成エンドポイント
+- `app/api/review/check/route.ts`：ログインを確認し、英文の意味をサーバー側で判定する復習エンドポイント。例文と完全一致する回答はAIを呼ばずに正解とし、判定エラーは誤答にせず再試行できます
 - 生成に失敗した場合はエラーを表示し、チュートリアル文や汎用文へ勝手に置き換えません
 
 日記データはSupabase Postgres、写真は非公開の`daily-photos`バケットへ保存します。Row Level Securityにより、ログインした本人だけが自分のデータを読み書きできます。以前の`localStorage`に日記が残っている場合は、Googleログイン後に一度だけクラウドへ移行し、端末から削除します。
@@ -118,7 +120,7 @@ type DailyEntry = {
 3. `OPENAI_API_KEY`をProduction・Previewのサーバー用環境変数として追加します。
 4. `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`、`NEXT_PUBLIC_SITE_URL`をProduction・Previewへ追加します。
 5. 必要に応じて`OPENAI_VISION_MODEL`を追加します。未設定の場合は`gpt-5.6-luna`を使用します。
-6. Vercel Firewallで`/api/generate`に、IPごとに10分間5回、超過時は`429`を返すRate Limitルールを設定します。
+6. Vercel Firewallで`/api/generate`にIPごとに10分間5回のRate Limitルールを設定します。復習の`/api/review/check`にも適切なRate Limitを設定してください（アプリ内の短時間制限はサーバーインスタンス単位です）。
 7. デプロイ後、シークレットウィンドウとスマートフォンでGoogleログイン、クラウド復元、写真からの生成を確認します。
 
 `OPENAI_API_KEY`に`NEXT_PUBLIC_`を付けないでください。付けるとAPIキーがブラウザへ公開されます。
