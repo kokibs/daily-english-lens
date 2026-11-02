@@ -8,6 +8,7 @@ import {
   reviewItemsForEntry,
   reviewJapanesePrompt,
   reviewWordCount,
+  reviewWordHints,
 } from "../lib/review-quiz.ts";
 
 const entry = {
@@ -30,6 +31,7 @@ test("review uses the highlighted expression's Japanese clue and complete short 
   assert.equal(reviewJapanesePrompt(items[0]), "神戸女学院の文化祭に行く");
   assert.equal(items[0].expression.example, "I went to a school festival at Kobe College.");
   assert.equal(reviewWordCount(items[0]), 9);
+  assert.deepEqual(reviewWordHints(items[0]), ["went", "school"]);
   assert.equal(reviewItemKey(items[0]), "saved-day:festival-expression");
 });
 

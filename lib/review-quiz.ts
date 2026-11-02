@@ -25,6 +25,13 @@ export function reviewWordCount(item: ReviewItem) {
   return item.expression.example.trim().split(/\s+/).filter(Boolean).length;
 }
 
+const HINT_FILLER_WORDS = new Set(["i", "a", "an", "the", "to", "at", "in", "on", "of", "and", "with", "my", "we", "it", "was", "were", "is"]);
+
+export function reviewWordHints(item: ReviewItem) {
+  const words = item.expression.example.match(/[A-Za-z]+(?:'[A-Za-z]+)*/g) ?? [];
+  return [...new Set(words.filter((word) => !HINT_FILLER_WORDS.has(word.toLowerCase())))].slice(0, 2);
+}
+
 export function normalizeReviewAnswer(value: string) {
   return value.trim().toLowerCase().replace(/[.,!?;:]/g, "").replace(/\s+/g, " ");
 }

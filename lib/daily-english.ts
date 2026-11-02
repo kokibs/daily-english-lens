@@ -1,3 +1,5 @@
+import type { EnglishLevel } from "./english-level";
+
 export type PhotoEntry = {
   id: string;
   imageUrl: string;
@@ -264,11 +266,11 @@ export function createDailyEntryFromPhotos(photos: PhotoEntry[], date = dateOnly
  * Client boundary for the server-side Vision model. Photos are sent only when
  * the user presses Generate; API credentials never reach the browser.
  */
-export async function generateDailyEnglish(photos: PhotoEntry[]): Promise<DailyEntry> {
+export async function generateDailyEnglish(photos: PhotoEntry[], level: EnglishLevel): Promise<DailyEntry> {
   const response = await fetch("/api/generate", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ photos }),
+    body: JSON.stringify({ photos, level }),
   });
   const result = await response.json() as DailyEntry | { error?: string };
   if (!response.ok) {

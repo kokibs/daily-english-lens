@@ -54,13 +54,51 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.match(captured.body.instructions, /Never put underscores/);
   assert.match(captured.body.instructions, /八坂神社を訪れてお参りする/);
   assert.match(captured.body.instructions, /at least two words long/);
-  assert.match(captured.body.instructions, /ideally 6-12 words/);
+  assert.match(captured.body.instructions, /natural expressions that someone would actually say/);
+  assert.match(captured.body.instructions, /Learner level: intermediate/);
   assert.equal(captured.body.input[0].content.filter((item) => item.type === "input_image").length, 2);
   assert.match(captured.body.input[0].content[1].text, /八坂神社に行った/);
   assert.match(captured.body.input[0].content[1].text, /2時55分/);
   assert.equal(entry.moments[0].english, "I visited Yasaka Shrine today.");
   assert.equal(entry.moments[1].english, "I enjoyed a plate of fresh sashimi.");
   assert.ok(entry.expressions.every((item) => item.cloze.includes("______")));
+});
+
+test("changes conversational vocabulary and nuance across all four levels", async () => {
+  const prompts = [];
+  const fakeFetch = async (_url, init) => {
+    prompts.push(JSON.parse(String(init.body)).instructions);
+    return Response.json({ output: [{ content: [{ type: "output_text", text: JSON.stringify(generated) }] }] });
+  };
+
+  for (const level of ["intro", "beginner", "intermediate", "advanced"]) {
+    await generateWithVision(photos, "secret-test-key", "vision-test-model", fakeFetch, level);
+  }
+
+  assert.match(prompts[0], /Learner level: intro/);
+  assert.match(prompts[0], /very familiar everyday vocabulary/);
+  assert.match(prompts[1], /Learner level: beginner/);
+  assert.match(prompts[1], /simple, natural English/);
+  assert.match(prompts[2], /Learner level: intermediate/);
+  assert.match(prompts[2], /common phrasal verbs/);
+  assert.match(prompts[3], /Learner level: advanced/);
+  assert.match(prompts[3], /subtle nuance/);
+  assert.match(prompts[3], /Do not use academic wording/);
+  assert.ok(prompts.every((prompt) => prompt.includes("Do not invent or remove essential information")));
+});
+
+test("rejects an unknown level before calling the model", async () => {
+  const request = new Request("https://example.test/api/generate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ photos, level: "expert" }),
+  });
+  const response = await handleVisionGenerateRequest(request, "test-key", undefined, async () => {
+    throw new Error("Vision API must not be called");
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /英語レベル/);
 });
 
 test("rejects generated quiz clues that replace concrete nouns with blanks", async () => {

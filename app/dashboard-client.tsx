@@ -16,7 +16,8 @@ import {
   PhotoEntry,
 } from "../lib/daily-english";
 import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
-import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
+import { DEFAULT_ENGLISH_LEVEL, ENGLISH_LEVEL_DESCRIPTIONS, ENGLISH_LEVEL_EXAMPLES, ENGLISH_LEVEL_LABELS, ENGLISH_LEVELS, isEnglishLevel, type EnglishLevel } from "../lib/english-level";
+import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, reviewWordHints, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
 
 export type AppUser = {
@@ -31,6 +32,7 @@ type Feedback = ReviewGrade | null;
 
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
+const LEVEL_KEY_PREFIX = "daily-english-lens:english-level:";
 const GENERATION_USAGE_KEY = "daily-english-lens:generation-usage";
 const MAX_PHOTOS = 10;
 const MAX_DAILY_GENERATIONS = 5;
@@ -175,10 +177,12 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const gradingInFlight = useRef(false);
   const gradingEpoch = useRef(0);
   const [quizSoundEnabled, setQuizSoundEnabled] = useState(true);
+  const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(DEFAULT_ENGLISH_LEVEL);
 
   useEffect(() => {
     let localEntries: DailyEntry[] = [];
     let soundEnabled = true;
+    let preferredLevel: EnglishLevel = DEFAULT_ENGLISH_LEVEL;
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -190,10 +194,15 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
             : entry);
       }
       soundEnabled = window.localStorage.getItem(SOUND_KEY) !== "off";
+      const storedLevel = window.localStorage.getItem(`${LEVEL_KEY_PREFIX}${user.id}`);
+      if (isEnglishLevel(storedLevel)) preferredLevel = storedLevel;
     } catch {
       localEntries = [];
     }
-    const preferenceTimer = window.setTimeout(() => setQuizSoundEnabled(soundEnabled), 0);
+    const preferenceTimer = window.setTimeout(() => {
+      setQuizSoundEnabled(soundEnabled);
+      setEnglishLevel(preferredLevel);
+    }, 0);
 
     let cancelled = false;
     async function syncEntries() {
@@ -382,6 +391,15 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setDraggedPhotoId(null);
   }
 
+  function changeEnglishLevel(level: EnglishLevel) {
+    setEnglishLevel(level);
+    try {
+      window.localStorage.setItem(`${LEVEL_KEY_PREFIX}${user.id}`, level);
+    } catch {
+      // The choice still applies until this page is closed.
+    }
+  }
+
   async function createEnglish() {
     if (!photos.length) return;
     if (!unlimitedGenerationToday && generationUsage().count >= MAX_DAILY_GENERATIONS) {
@@ -391,7 +409,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setGenerating(true);
     setGenerationError(null);
     try {
-      const result = await generateDailyEnglish(photos);
+      const result = await generateDailyEnglish(photos, englishLevel);
       if (!unlimitedGenerationToday) recordGeneration();
       setActiveEntry(result);
       setSavedNotice(false);
@@ -549,6 +567,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
           draggedPhotoId={draggedPhotoId}
           fileDragging={fileDragging}
           generating={generating}
+          englishLevel={englishLevel}
           generationError={generationError}
           savedEntries={savedEntries}
           reviewItem={quickReview}
@@ -569,6 +588,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
           onNote={(id, note) => setPhotos((items) => items.map((item) => item.id === id ? { ...item, note } : item))}
           onClear={() => { setPhotos([]); setSelectedPhotoId(null); }}
           onGenerate={() => void createEnglish()}
+          onLevelChange={changeEnglishLevel}
           onAnswer={updateReviewAnswer}
           onCheck={() => void checkAnswer()}
           onNext={nextQuestion}
@@ -587,7 +607,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
 
       {screen === "review" && (
         selectedReviewDate === null
-          ? <ReviewDayPicker entries={savedEntries} onSelect={selectReviewDay} onCreate={goToCreate} />
+          ? <ReviewDayPicker entries={savedEntries} level={englishLevel} onLevelChange={changeEnglishLevel} onSelect={selectReviewDay} onCreate={goToCreate} />
           : <ReviewScreen
               item={currentSessionReview}
               answer={answer}
@@ -599,6 +619,8 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
               complete={reviewComplete}
               mistakeCount={reviewMistakeIds.length}
               soundEnabled={quizSoundEnabled}
+              level={englishLevel}
+              onLevelChange={changeEnglishLevel}
               onAnswer={updateReviewAnswer}
               onCheck={() => void checkAnswer()}
               onNext={nextQuestion}
@@ -661,6 +683,7 @@ function Dashboard(props: {
   draggedPhotoId: string | null;
   fileDragging: boolean;
   generating: boolean;
+  englishLevel: EnglishLevel;
   generationError: string | null;
   savedEntries: DailyEntry[];
   reviewItem?: ReviewItem;
@@ -681,6 +704,7 @@ function Dashboard(props: {
   onNote: (id: string, note: string) => void;
   onClear: () => void;
   onGenerate: () => void;
+  onLevelChange: (level: EnglishLevel) => void;
   onAnswer: (answer: string) => void;
   onCheck: () => void;
   onNext: () => void;
@@ -721,6 +745,8 @@ function Dashboard(props: {
               {props.photos.length > 0 && <button type="button" className="danger-link" onClick={props.onClear}>Clear</button>}
             </div>
           </div>
+
+          <LevelSelector level={props.englishLevel} onChange={props.onLevelChange} disabled={props.generating} />
 
           {props.photos.length ? (
             <>
@@ -778,6 +804,7 @@ function Dashboard(props: {
 
         <QuickReview
           item={props.reviewItem}
+          level={props.englishLevel}
           answer={props.answer}
           feedback={props.feedback}
           grading={props.grading}
@@ -809,8 +836,37 @@ function ProgressRail({ photoCount }: { photoCount: number }) {
   );
 }
 
-function QuickReview({ item, answer, feedback, grading, gradingError, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onOpenReview }: {
+function LevelSelector({ level, onChange, disabled = false, compact = false }: {
+  level: EnglishLevel;
+  onChange: (level: EnglishLevel) => void;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`level-selector ${compact ? "compact" : ""}`}>
+      <div className="level-selector-heading">
+        <strong>英語のレベル</strong>
+        <small>レベルはいつでも変更できます</small>
+      </div>
+      <div className="level-options" role="group" aria-label="英語のレベルを選択">
+        {ENGLISH_LEVELS.map((option) => (
+          <button key={option} type="button" className={level === option ? "selected" : ""} aria-pressed={level === option} disabled={disabled} onClick={() => onChange(option)}>
+            {ENGLISH_LEVEL_LABELS[option]}
+          </button>
+        ))}
+      </div>
+      <div className="level-example" aria-live="polite">
+        <p>{ENGLISH_LEVEL_DESCRIPTIONS[level]}</p>
+        <div><span lang="en">{ENGLISH_LEVEL_EXAMPLES[level].english}</span><small>{ENGLISH_LEVEL_EXAMPLES[level].japanese}</small></div>
+      </div>
+      {!compact && <small className="level-selector-note">次に生成する英文に反映されます。保存済みの英文は変わりません。</small>}
+    </div>
+  );
+}
+
+function QuickReview({ item, level, answer, feedback, grading, gradingError, soundEnabled, onAnswer, onCheck, onNext, onToggleSound, onOpenReview }: {
   item?: ReviewItem;
+  level: EnglishLevel;
   answer: string;
   feedback: Feedback;
   grading: boolean;
@@ -838,7 +894,7 @@ function QuickReview({ item, answer, feedback, grading, gradingError, soundEnabl
           <div><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></div>
         </div>
         <div className="inline-quiz">
-          <div className="quiz-prompt"><span>PHOTO → ENGLISH</span><h3>{reviewJapanesePrompt(item)}</h3><small className="review-word-count">参考例文: {reviewWordCount(item)} words</small><p>写真をヒントに英文を書こう。意味が同じなら、言い換えでも正解です。</p></div>
+          <div className="quiz-prompt"><span>PHOTO → ENGLISH</span><h3>{reviewJapanesePrompt(item)}</h3><small className="review-word-count">参考例文: {reviewWordCount(item)} words</small>{(level === "intro" || level === "beginner") && <small className="review-word-hint">単語ヒント: {reviewWordHints(item).join(" / ")}</small>}<p>写真をヒントに英文を書こう。意味が同じなら、言い換えでも正解です。</p></div>
           <label htmlFor="home-review-answer">Your sentence</label>
           <div className={`inline-answer ${feedback || ""}`}>
             <input id="home-review-answer" value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !grading) { if (feedback) onNext(); else onCheck(); } }} placeholder="Write it in your own English…" autoComplete="off" disabled={grading} />
@@ -993,8 +1049,10 @@ function ExpressionRow({ expression, index }: { expression: Expression; index: n
   );
 }
 
-function ReviewDayPicker({ entries, onSelect, onCreate }: {
+function ReviewDayPicker({ entries, level, onLevelChange, onSelect, onCreate }: {
   entries: DailyEntry[];
+  level: EnglishLevel;
+  onLevelChange: (level: EnglishLevel) => void;
   onSelect: (entry: DailyEntry) => void;
   onCreate: () => void;
 }) {
@@ -1004,6 +1062,7 @@ function ReviewDayPicker({ entries, onSelect, onCreate }: {
   return (
     <section className="app-screen review-picker-page section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">Your review archive</p><h1>Choose a day</h1><p>復習したい日を選ぶと、その日の英語だけが出題されます。</p></div></div>
+      <LevelSelector level={level} onChange={onLevelChange} compact />
       <div className="review-day-list">
         {reviewableEntries.map((entry) => (
           <button className="review-day-card" type="button" key={entry.id} onClick={() => onSelect(entry)}>
@@ -1023,8 +1082,10 @@ function ReviewDayPicker({ entries, onSelect, onCreate }: {
   );
 }
 
-function ReviewScreen({ item, answer, feedback, grading, gradingError, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onChooseDay, onFinish, onToggleSound, onCreate }: {
+function ReviewScreen({ item, level, onLevelChange, answer, feedback, grading, gradingError, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onChooseDay, onFinish, onToggleSound, onCreate }: {
   item?: ReviewItem;
+  level: EnglishLevel;
+  onLevelChange: (level: EnglishLevel) => void;
   answer: string;
   feedback: Feedback;
   grading: boolean;
@@ -1074,12 +1135,14 @@ function ReviewScreen({ item, answer, feedback, grading, gradingError, index, to
   return (
     <section className="app-screen review-page section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">{formatDay(item.entry.date)} · {Math.min(index + 1, total)} of {total}</p><h1>Review this day</h1><p>写真の記憶から、この日の英語を思い出そう。</p></div><div className="review-tools"><button className="review-change-day" type="button" onClick={onChooseDay}>← Change day</button><button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div></div>
+      <LevelSelector level={level} onChange={onLevelChange} compact />
       <div className="review-workspace">
         <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
           <span className="question-type">JAPANESE → ENGLISH</span>
           <h2>{reviewJapanesePrompt(item)}</h2>
           <small className="review-word-count">参考例文: {reviewWordCount(item)} words</small>
+          {(level === "intro" || level === "beginner") && <small className="review-word-hint">単語ヒント: {reviewWordHints(item).join(" / ")}</small>}
           <p>写真をヒントに英文を書こう。意味が同じなら、言い換えでも正解です。</p>
           <label htmlFor="review-answer">Your sentence</label>
           <input id="review-answer" className={feedback || ""} value={answer} onChange={(event) => onAnswer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !grading) { if (feedback) onNext(); else onCheck(); } }} placeholder="Write it in your own English…" autoComplete="off" disabled={grading} />
