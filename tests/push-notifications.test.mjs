@@ -12,6 +12,10 @@ const subscription = {
 
 test("accepts a browser push endpoint but rejects arbitrary destinations", () => {
   assert.deepEqual(parsePushSubscription(subscription), subscription);
+  assert.deepEqual(parsePushSubscription({ ...subscription, endpoint: "https://jmt17.google.com/fcm/send/example" }), {
+    ...subscription, endpoint: "https://jmt17.google.com/fcm/send/example",
+  });
+  assert.equal(parsePushSubscription({ ...subscription, endpoint: "https://jmt17.google.com/collect" }), null);
   assert.equal(parsePushSubscription({ ...subscription, endpoint: "https://example.com/collect" }), null);
   assert.equal(parsePushSubscription({ ...subscription, endpoint: "http://fcm.googleapis.com/fcm/send/example" }), null);
   assert.match(validatePushSubscription({ ...subscription, endpoint: "https://push.example.com/collect" }).error, /push\.example\.com/);
