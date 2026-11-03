@@ -14,7 +14,7 @@ function GoogleMark() {
   );
 }
 
-export default function LoginClient({ configured }: { configured: boolean }) {
+export default function LoginClient({ configured, nextPath }: { configured: boolean; nextPath: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +26,9 @@ export default function LoginClient({ configured }: { configured: boolean }) {
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: nextPath === "/"
+          ? `${window.location.origin}/auth/callback`
+          : `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
       },
     });
     if (authError) {

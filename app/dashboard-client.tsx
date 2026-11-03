@@ -17,8 +17,11 @@ import {
 } from "../lib/daily-english";
 import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
 import { DEFAULT_ENGLISH_LEVEL, ENGLISH_LEVEL_DESCRIPTIONS, ENGLISH_LEVEL_EXAMPLES, ENGLISH_LEVEL_LABELS, ENGLISH_LEVELS, isEnglishLevel, type EnglishLevel } from "../lib/english-level";
+import { albumMonthLabel, albumReadyForNotification, monthlyAlbums, type MonthlyAlbum } from "../lib/monthly-albums";
 import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, reviewWordHints, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
+import MonthlyAlbumFilm from "./monthly-album-film";
+import PushNotificationSettings, { unsubscribeBrowserPush } from "./push-notification-settings";
 
 export type AppUser = {
   id: string;
@@ -33,6 +36,7 @@ type Feedback = ReviewGrade | null;
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
 const LEVEL_KEY_PREFIX = "daily-english-lens:english-level:";
+const ALBUM_NOTICE_KEY_PREFIX = "daily-english-lens:album-notice:";
 const GENERATION_USAGE_KEY = "daily-english-lens:generation-usage";
 const MAX_PHOTOS = 10;
 const MAX_DAILY_GENERATIONS = 5;
@@ -178,11 +182,16 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const gradingEpoch = useRef(0);
   const [quizSoundEnabled, setQuizSoundEnabled] = useState(true);
   const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(DEFAULT_ENGLISH_LEVEL);
+  const [selectedAlbumMonth, setSelectedAlbumMonth] = useState<string | null>(null);
+  const [playingAlbumMonth, setPlayingAlbumMonth] = useState<string | null>(null);
+  const [seenAlbumNotice, setSeenAlbumNotice] = useState<string | null>(null);
+  const [albumPreviewMonth, setAlbumPreviewMonth] = useState<string | null>(null);
 
   useEffect(() => {
     let localEntries: DailyEntry[] = [];
     let soundEnabled = true;
     let preferredLevel: EnglishLevel = DEFAULT_ENGLISH_LEVEL;
+    let lastSeenAlbum: string | null = null;
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -196,12 +205,14 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       soundEnabled = window.localStorage.getItem(SOUND_KEY) !== "off";
       const storedLevel = window.localStorage.getItem(`${LEVEL_KEY_PREFIX}${user.id}`);
       if (isEnglishLevel(storedLevel)) preferredLevel = storedLevel;
+      lastSeenAlbum = window.localStorage.getItem(`${ALBUM_NOTICE_KEY_PREFIX}${user.id}`);
     } catch {
       localEntries = [];
     }
     const preferenceTimer = window.setTimeout(() => {
       setQuizSoundEnabled(soundEnabled);
       setEnglishLevel(preferredLevel);
+      setSeenAlbumNotice(lastSeenAlbum);
     }, 0);
 
     let cancelled = false;
@@ -247,6 +258,29 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     () => savedEntries.flatMap(reviewItemsForEntry),
     [savedEntries],
   );
+  const albums = useMemo(() => monthlyAlbums(savedEntries), [savedEntries]);
+  useEffect(() => {
+    if (loadingEntries) return;
+    const url = new URL(window.location.href);
+    const month = url.searchParams.get("album");
+    const play = url.searchParams.get("play") === "1";
+    if (!month) return;
+    url.searchParams.delete("album");
+    url.searchParams.delete("play");
+    window.history.replaceState(window.history.state, "", url);
+    if (albums.some((album) => album.month === month)) {
+      const timer = window.setTimeout(() => {
+        setSelectedAlbumMonth(month);
+        setScreen("history");
+        if (play) setPlayingAlbumMonth(month);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [albums, loadingEntries]);
+  const readyAlbum = albumReadyForNotification(albums, new Date());
+  const previewAlbum = albums.find((album) => album.month === albumPreviewMonth);
+  const playingAlbum = albums.find((album) => album.month === playingAlbumMonth);
+  const albumNotice = previewAlbum ?? (!loadingEntries && readyAlbum?.month !== seenAlbumNotice ? readyAlbum : null);
   const quickReview = reviewItems[quickReviewIndex % Math.max(reviewItems.length, 1)];
   const reviewItemsById = useMemo(
     () => new Map(reviewItems.map((item) => [reviewItemKey(item), item])),
@@ -306,10 +340,39 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
 
   function navigate(next: Screen) {
     invalidateReviewCheck();
+    setPlayingAlbumMonth(null);
     if (next === "review") showReviewDays();
+    if (next === "history") setSelectedAlbumMonth(null);
     setScreen(next);
     if (next !== "today") setSavedNotice(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function acknowledgeAlbum(month: string) {
+    setSeenAlbumNotice(month);
+    try {
+      window.localStorage.setItem(`${ALBUM_NOTICE_KEY_PREFIX}${user.id}`, month);
+    } catch {
+      // The notice stays dismissed for this session.
+    }
+  }
+
+  function openAlbum(month: string) {
+    setSelectedAlbumMonth(month);
+    setScreen("history");
+    if (albumPreviewMonth) setAlbumPreviewMonth(null);
+    else if (albumNotice?.month === month) acknowledgeAlbum(month);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function playAlbum(month: string) {
+    openAlbum(month);
+    setPlayingAlbumMonth(month);
+  }
+
+  function closeAlbumNotice(month: string) {
+    if (albumPreviewMonth) setAlbumPreviewMonth(null);
+    else acknowledgeAlbum(month);
   }
 
   function goToCreate() {
@@ -319,6 +382,15 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setSaveError(null);
     setDeleteError(null);
     window.setTimeout(() => document.getElementById("today-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
+  function changeEnglishLevel(level: EnglishLevel) {
+    setEnglishLevel(level);
+    try {
+      window.localStorage.setItem(`${LEVEL_KEY_PREFIX}${user.id}`, level);
+    } catch {
+      // The choice still applies until this page is closed.
+    }
   }
 
   async function addFiles(files: FileList | File[]) {
@@ -391,15 +463,6 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setDraggedPhotoId(null);
   }
 
-  function changeEnglishLevel(level: EnglishLevel) {
-    setEnglishLevel(level);
-    try {
-      window.localStorage.setItem(`${LEVEL_KEY_PREFIX}${user.id}`, level);
-    } catch {
-      // The choice still applies until this page is closed.
-    }
-  }
-
   async function createEnglish() {
     if (!photos.length) return;
     if (!unlimitedGenerationToday && generationUsage().count >= MAX_DAILY_GENERATIONS) {
@@ -461,6 +524,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       await deleteDailyEntry(user.id, activeEntry);
       setSavedEntries((entries) => entries.filter((entry) => entry.date !== activeEntry.date));
       setActiveEntry(null);
+      setSelectedAlbumMonth(null);
       setSavedNotice(false);
       setQuickReviewIndex(0);
       setSelectedReviewDate(null);
@@ -483,6 +547,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   }
 
   async function signOut() {
+    try { await unsubscribeBrowserPush(); } catch { /* The browser subscription is removed even when the server is unavailable. */ }
     const supabase = createClient();
     await supabase.auth.signOut({ scope: "local" });
     router.replace("/login");
@@ -560,6 +625,15 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
         </div>
       )}
 
+      {albumNotice && (
+        <div className="album-notice" role="status">
+          <div className="album-notice-art" aria-hidden="true">✶</div>
+          <p><strong>{albumMonthLabel(albumNotice.month)}のアルバムができました</strong><span>写真と英文をムービーで振り返ろう。</span></p>
+          <button className="album-notice-open" type="button" onClick={() => playAlbum(albumNotice.month)}>再生する <span aria-hidden="true">▶</span></button>
+          <button className="album-notice-close" type="button" onClick={() => closeAlbumNotice(albumNotice.month)} aria-label="アルバムのお知らせを閉じる">×</button>
+        </div>
+      )}
+
       {screen === "home" && (
         <Dashboard
           photos={photos}
@@ -634,8 +708,10 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       )}
 
       {screen === "history" && (
-        <HistoryScreen entries={savedEntries} onOpen={openEntry} onCreate={goToCreate} />
+        <HistoryScreen albums={albums} selectedMonth={selectedAlbumMonth} onSelectMonth={openAlbum} onPlay={playAlbum} onBack={() => setSelectedAlbumMonth(null)} onOpen={openEntry} onCreate={goToCreate} onPreviewNotice={() => setAlbumPreviewMonth(albums[0]?.month ?? null)} />
       )}
+
+      {playingAlbum && <MonthlyAlbumFilm key={playingAlbum.month} album={playingAlbum} onClose={() => setPlayingAlbumMonth(null)} />}
 
       <MobileNav screen={screen} onNavigate={navigate} onCreate={goToCreate} />
     </main>
@@ -660,7 +736,7 @@ function Header({ user, screen, reviewCount, onNavigate, onCreate, onSignOut }: 
           <button className={screen === "home" ? "active" : ""} onClick={() => onNavigate("home")}>Home</button>
           <button className={screen === "today" ? "active" : ""} onClick={() => onNavigate("today")}>Today</button>
           <button className={screen === "review" ? "active" : ""} onClick={() => onNavigate("review")}>Review {reviewCount > 0 && <span className="count-badge">{reviewCount}</span>}</button>
-          <button className={screen === "history" ? "active" : ""} onClick={() => onNavigate("history")}>Past days</button>
+          <button className={screen === "history" ? "active" : ""} onClick={() => onNavigate("history")}>Albums</button>
         </div>
         <div className="header-actions">
           <button className="header-create" type="button" onClick={onCreate}><span>+</span> Add photos</button>
@@ -1155,20 +1231,74 @@ function ReviewScreen({ item, level, onLevelChange, answer, feedback, grading, g
   );
 }
 
-function HistoryScreen({ entries, onOpen, onCreate }: { entries: DailyEntry[]; onOpen: (entry: DailyEntry) => void; onCreate: () => void }) {
-  if (!entries.length) return <EmptyState title="No days saved yet" body="今日の写真から、最初の英語を作ってみましょう。" onCreate={onCreate} />;
+function HistoryScreen({ albums, selectedMonth, onSelectMonth, onPlay, onBack, onOpen, onCreate, onPreviewNotice }: {
+  albums: MonthlyAlbum[];
+  selectedMonth: string | null;
+  onSelectMonth: (month: string) => void;
+  onPlay: (month: string) => void;
+  onBack: () => void;
+  onOpen: (entry: DailyEntry) => void;
+  onCreate: () => void;
+  onPreviewNotice: () => void;
+}) {
+  if (!albums.length) return <><EmptyState title="No albums yet" body="今日の写真から英語を作って保存すると、月ごとのアルバムに残ります。" onCreate={onCreate} /><section className="section-shell"><PushNotificationSettings testMonth={null} /></section></>;
+  const selectedAlbum = albums.find((album) => album.month === selectedMonth);
+
+  if (selectedAlbum) {
+    const coverPhotos = selectedAlbum.photos.filter((photo) => photo.imageUrl).slice(0, 5);
+    return (
+      <section className="app-screen album-detail-page section-shell reveal">
+        <button className="album-back" type="button" onClick={onBack}>← すべてのアルバム</button>
+        <div className="album-detail-heading">
+          <p className="kicker">YOUR MONTH IN ENGLISH</p>
+          <h1>{albumMonthLabel(selectedAlbum.month, "en-US")}</h1>
+          <p>{selectedAlbum.entries.length}日分の写真と英語。思い出をめくるように振り返ろう。</p>
+        </div>
+        <button className="album-film-launch" type="button" onClick={() => onPlay(selectedAlbum.month)}>▶ 写真と英文のムービーを再生</button>
+        <div className="album-hero-grid" aria-label={`${albumMonthLabel(selectedAlbum.month)}の写真`}>
+          {coverPhotos.length ? coverPhotos.map((photo, index) => <img key={`${photo.id}-${index}`} src={photo.imageUrl} alt={photo.label || `${index + 1}枚目の思い出`} />) : <div className="album-photo-placeholder" aria-hidden="true">✶</div>}
+        </div>
+        <div className="album-detail-intro"><span>PHOTO NOTES · {String(selectedAlbum.photos.length).padStart(2, "0")}</span><p>写真を見返すと、その日の英語もよみがえる。</p></div>
+        <div className="album-day-stories">
+          {selectedAlbum.entries.map((entry) => (
+            <article className="album-day-story" key={entry.id}>
+              <div className="album-day-heading"><div><span>{formatDay(entry.date)}</span><h2>{entry.diaryEnglish}</h2><p>{entry.diaryJapanese}</p></div><button type="button" onClick={() => onOpen(entry)}>この日を開く <span aria-hidden="true">↗</span></button></div>
+              {entry.photos.length > 0 && <div className="album-moment-grid">
+                {entry.photos.map((photo) => {
+                  const moment = entry.moments.find((item) => item.photoId === photo.id);
+                  const expression = entry.expressions.find((item) => item.photoId === photo.id);
+                  return (
+                    <div className="album-moment" key={photo.id}>
+                      {photo.imageUrl ? <img src={photo.imageUrl} alt={photo.label || "この日の写真"} /> : <div className="album-photo-placeholder" aria-hidden="true">✶</div>}
+                      <div><small>{approximatePhotoTime(photo.time) || photo.label || "A moment"}</small><strong>{moment?.english || expression?.example || entry.diaryEnglish}</strong><p>{moment?.japanese || expression?.japanese || entry.diaryJapanese}</p></div>
+                    </div>
+                  );
+                })}
+              </div>}
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="app-screen history-page section-shell reveal">
-      <div className="page-toolbar"><div><p className="kicker">Your English archive</p><h1>Past days</h1><p>写真と英語が、あなたの記憶として残ります。</p></div><button className="secondary-action" type="button" onClick={onCreate}>+ Create today</button></div>
-      <div className="history-list">
-        {entries.map((entry) => (
-          <button className="history-row" type="button" key={entry.id} onClick={() => onOpen(entry)}>
-            <div className="history-date"><strong>{new Date(`${entry.date}T12:00:00`).getDate()}</strong><span>{new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(`${entry.date}T12:00:00`))}</span></div>
-            <div className="history-thumbs">{entry.photos.slice(0, 4).map((photo) => <img src={photo.imageUrl} alt="" key={photo.id} />)}</div>
-            <div className="history-copy"><span>{formatDay(entry.date)}</span><strong>{entry.diaryEnglish}</strong><small>{entry.expressions.length} expressions</small></div>
-            <b>↗</b>
-          </button>
-        ))}
+      <div className="page-toolbar"><div><p className="kicker">Your English archive</p><h1>Monthly albums</h1><p>写真と英語を、月ごとの思い出として振り返れます。</p></div><div className="album-toolbar-actions"><button className="secondary-action" type="button" onClick={onCreate}>+ Create today</button>{process.env.NODE_ENV === "development" && <button className="secondary-action" type="button" onClick={onPreviewNotice}>通知を試す</button>}</div></div>
+      <PushNotificationSettings testMonth={albums[0]?.month ?? null} />
+      <div className="monthly-album-grid">
+        {albums.map((album) => {
+          const coverPhotos = album.photos.filter((photo) => photo.imageUrl).slice(0, 4);
+          return (
+            <button className="monthly-album-card" type="button" key={album.month} onClick={() => onSelectMonth(album.month)} aria-label={`${albumMonthLabel(album.month)}のアルバムを開く`}>
+              <div className="monthly-album-cover">
+                {coverPhotos.length ? coverPhotos.map((photo, index) => <img src={photo.imageUrl} alt="" key={`${photo.id}-${index}`} />) : <div className="album-photo-placeholder" aria-hidden="true">✶</div>}
+                <span>{albumMonthLabel(album.month, "en-US")}</span>
+              </div>
+              <div className="monthly-album-copy"><div><small>{album.entries.length} days · {album.photos.length} photos</small><strong>{albumMonthLabel(album.month)}</strong><p>{album.entries[0]?.diaryJapanese || album.entries[0]?.diaryEnglish}</p></div><b aria-hidden="true">→</b></div>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -1194,6 +1324,6 @@ function ConceptSection() {
 }
 
 function MobileNav({ screen, onNavigate, onCreate }: { screen: Screen; onNavigate: (screen: Screen) => void; onCreate: () => void }) {
-  const items: Array<[Screen, string, string]> = [["home", "○", "Create"], ["today", "✶", "Today"], ["review", "↻", "Review"], ["history", "☷", "Past"]];
+  const items: Array<[Screen, string, string]> = [["home", "○", "Create"], ["today", "✶", "Today"], ["review", "↻", "Review"], ["history", "☷", "Albums"]];
   return <nav className="mobile-nav" aria-label="Mobile navigation">{items.map(([target, icon, label]) => <button type="button" key={target} className={screen === target ? "active" : ""} aria-current={screen === target ? "page" : undefined} onClick={target === "home" ? onCreate : () => onNavigate(target)}><span aria-hidden="true">{icon}</span><small>{label}</small></button>)}</nav>;
 }

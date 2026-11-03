@@ -32,6 +32,8 @@ export const metadata: Metadata = {
   metadataBase: new URL(metadataOrigin),
   title,
   description,
+  icons: { apple: "/app-icon-192.png" },
+  appleWebApp: { capable: true, title: "Daily English Lens", statusBarStyle: "default" },
   openGraph: {
     title,
     description,

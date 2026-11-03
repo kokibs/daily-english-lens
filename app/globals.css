@@ -68,6 +68,14 @@ main { min-height: 100vh; }
 .cloud-status p { flex: 1; margin: 0; color: var(--ink); font-size: 10px; font-weight: 700; }
 .cloud-status button { width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); font-size: 17px; }
 @keyframes cloud-spin { to { transform: rotate(360deg); } }
+.album-notice { width: min(1120px, calc(100% - 40px)); display: flex; align-items: center; gap: 14px; margin: 18px auto 0; padding: 12px 13px; border: 1px solid #b9c9a7; border-radius: 16px; background: #f6f9e8; box-shadow: 0 10px 28px rgba(31,59,50,.08); }
+.album-notice-art { flex: 0 0 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--lime); color: var(--green); font-size: 24px; }
+.album-notice p { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.album-notice strong { font-size: 12px; }
+.album-notice p span { color: var(--muted); font-size: 10px; }
+.album-notice-open { min-height: 37px; display: flex; align-items: center; gap: 13px; border: 0; border-radius: 9px; background: var(--green); color: white; padding: 0 12px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.album-notice-open span { color: var(--lime); font-size: 15px; }
+.album-notice-close { width: 29px; height: 29px; border: 0; background: transparent; color: var(--muted); font-size: 19px; }
 
 /* Authentication */
 .login-page { position: relative; isolation: isolate; min-height: 100svh; display: grid; place-items: center; overflow: hidden; background: var(--green); padding: clamp(24px, 5vw, 64px); }
@@ -425,6 +433,92 @@ main { min-height: 100vh; }
 .review-finish span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--lime); color: var(--green); }
 
 /* History */
+.album-toolbar-actions { display: flex; gap: 8px; }
+.album-push-settings { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin: 0 0 25px; padding: 20px 24px; border: 1px solid var(--line-dark); border-radius: 18px; background: var(--paper); box-shadow: var(--shadow); }
+.album-push-settings h2 { margin: 5px 0; color: var(--ink); font-size: 17px; }
+.album-push-settings p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.album-push-settings .album-push-message { color: var(--green); font-weight: 750; }
+.album-push-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+.album-push-actions button { min-height: 41px; border: 1px solid var(--line-dark); border-radius: 10px; background: var(--green); color: white; padding: 0 13px; font-size: 11px; font-weight: 800; }
+.album-push-actions button + button { background: white; color: var(--green); }
+.album-push-actions button:disabled { opacity: .5; }
+.monthly-album-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.monthly-album-card { overflow: hidden; border: 1px solid var(--line-dark); border-radius: 21px; background: var(--paper); color: var(--ink); padding: 0; text-align: left; box-shadow: var(--shadow); transition: transform .2s ease, box-shadow .2s ease; }
+.monthly-album-card:hover { transform: translateY(-3px); box-shadow: 0 22px 55px rgba(35, 61, 52, .13); }
+.monthly-album-cover { position: relative; height: 265px; overflow: hidden; display: flex; gap: 3px; background: #d9e2d9; }
+.monthly-album-cover::after { position: absolute; inset: 35% 0 0; content: ""; background: linear-gradient(transparent, rgba(16,39,32,.75)); pointer-events: none; }
+.monthly-album-cover img { min-width: 0; height: 100%; flex: 1; object-fit: cover; }
+.monthly-album-cover > span { position: absolute; z-index: 1; left: 24px; bottom: 19px; color: white; font: 400 37px/.98 Georgia, serif; letter-spacing: -.045em; }
+.monthly-album-copy { min-height: 120px; display: flex; align-items: end; justify-content: space-between; gap: 15px; padding: 20px 24px 22px; }
+.monthly-album-copy > div { min-width: 0; }
+.monthly-album-copy small { display: block; color: var(--soft); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.monthly-album-copy strong { display: block; margin-top: 7px; font-size: 18px; }
+.monthly-album-copy p { overflow: hidden; margin: 7px 0 0; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.monthly-album-copy > b { flex: 0 0 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: var(--lime); color: var(--green); font-size: 19px; font-weight: 400; }
+.album-back { min-height: 42px; margin-bottom: 25px; border: 1px solid var(--line-dark); border-radius: 10px; background: var(--paper); color: var(--green); padding: 0 15px; font-size: 11px; font-weight: 800; }
+.album-back:hover { border-color: var(--green); }
+.album-detail-heading { margin-bottom: 28px; }
+.album-detail-heading h1 { margin: 8px 0 0; font: 400 clamp(48px, 7vw, 84px)/.95 Georgia, serif; letter-spacing: -.06em; }
+.album-detail-heading > p:last-child { margin: 15px 0 0; color: var(--muted); font-size: 13px; }
+.album-hero-grid { height: clamp(280px, 42vw, 475px); overflow: hidden; display: flex; gap: 5px; border-radius: 21px; background: #d9e2d9; }
+.album-hero-grid img { min-width: 0; height: 100%; flex: 1; object-fit: cover; }
+.album-photo-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: #dbe5d7; color: var(--green); font: 400 76px Georgia, serif; }
+.album-detail-intro { display: flex; align-items: center; justify-content: space-between; gap: 30px; padding: 26px 2px 35px; border-bottom: 1px solid var(--line-dark); }
+.album-detail-intro span { color: var(--soft); font-size: 10px; font-weight: 850; letter-spacing: .12em; white-space: nowrap; }
+.album-detail-intro p { margin: 0; font: 400 clamp(19px, 3vw, 29px)/1.4 Georgia, "Hiragino Mincho ProN", serif; text-align: right; }
+.album-day-story { padding: 38px 0 43px; border-bottom: 1px solid var(--line-dark); }
+.album-day-heading { display: flex; justify-content: space-between; align-items: start; gap: 25px; margin-bottom: 22px; }
+.album-day-heading > div { max-width: 760px; }
+.album-day-heading span { color: var(--soft); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.album-day-heading h2 { margin: 9px 0 9px; font: 400 clamp(21px, 3vw, 29px)/1.3 Georgia, serif; }
+.album-day-heading p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.album-day-heading button { flex: 0 0 auto; min-height: 39px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--line-dark); border-radius: 10px; background: var(--paper); color: var(--green); padding: 0 13px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.album-day-heading button:hover { border-color: var(--green); }
+.album-moment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 13px; }
+.album-moment { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.album-moment > img, .album-moment > .album-photo-placeholder { width: 100%; height: 170px; object-fit: cover; }
+.album-moment > .album-photo-placeholder { font-size: 44px; }
+.album-moment > div:last-child { padding: 14px 14px 17px; }
+.album-moment small { color: var(--soft); font-size: 9px; font-weight: 750; }
+.album-moment strong { display: block; margin-top: 7px; font: 400 15px/1.4 Georgia, serif; }
+.album-moment p { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+
+.album-film-backdrop { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(13, 32, 26, .78); backdrop-filter: blur(12px); }
+.album-film { width: min(760px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,.45); border-radius: 22px; background: var(--paper); box-shadow: 0 30px 90px rgba(0,0,0,.32); }
+.album-film-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 18px; }
+.album-film-header span { color: var(--soft); font-size: 9px; font-weight: 850; letter-spacing: .12em; }
+.album-film-header h2 { margin: 3px 0 0; font: 400 20px/1.2 Georgia, "Hiragino Mincho ProN", serif; }
+.album-film-header button { flex: 0 0 34px; height: 34px; border: 1px solid var(--line-dark); border-radius: 50%; background: white; color: var(--green); font-size: 23px; line-height: 1; }
+.album-film-stage { position: relative; min-height: 280px; height: min(65dvh, 560px); overflow: hidden; background: #132d25; color: white; }
+.album-film-image-backdrop, .album-film-image { position: absolute; inset: 0; width: 100%; height: 100%; }
+.album-film-image-backdrop { object-fit: cover; filter: blur(26px) brightness(.5); transform: scale(1.12); }
+.album-film-image { z-index: 1; object-fit: contain; animation: album-film-photo var(--film-duration) ease-out both; }
+.album-film-stage.paused .album-film-image { animation: none; }
+.album-film-image-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--lime); font: 400 90px Georgia, serif; }
+.album-film-shade { position: absolute; z-index: 2; inset: 35% 0 0; background: linear-gradient(transparent, rgba(8,24,19,.92)); pointer-events: none; }
+.album-film-progress { position: absolute; z-index: 4; top: 16px; left: 18px; right: 18px; height: 4px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.45); }
+.album-film-progress-past, .album-film-progress-current { position: absolute; top: 0; bottom: 0; background: var(--lime); }
+.album-film-progress-past { left: 0; width: var(--film-position); }
+.album-film-progress-current { left: var(--film-position); width: var(--film-step); transform-origin: left; transform: scaleX(0); animation: album-film-step var(--film-duration) linear forwards; }
+.album-film-progress-current.paused { animation-play-state: paused; }
+.album-film-caption { position: absolute; z-index: 3; left: clamp(22px, 5vw, 45px); right: clamp(22px, 5vw, 45px); bottom: clamp(26px, 5vw, 45px); animation: album-film-caption .45s ease-out both; }
+.album-film-caption > span { color: var(--lime); font-size: 10px; font-weight: 850; letter-spacing: .08em; }
+.album-film-caption p { max-height: 4.5em; overflow-y: auto; margin: 9px 0 7px; font: 400 clamp(26px, 5vw, 43px)/1.12 Georgia, serif; text-wrap: balance; }
+.album-film-caption small { display: block; max-height: 3.4em; overflow-y: auto; color: #e0e9df; font-size: clamp(11px, 2vw, 14px); line-height: 1.5; }
+.album-film-finished { position: absolute; z-index: 5; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 25px; background: rgba(13,38,30,.94); text-align: center; }
+.album-film-finished span { color: var(--lime); font: 400 70px Georgia, serif; }
+.album-film-finished strong { margin-top: 12px; font: 400 clamp(23px, 5vw, 36px)/1.2 Georgia, "Hiragino Mincho ProN", serif; }
+.album-film-finished p { color: #d9e4d9; font-size: 12px; }
+.album-film-controls { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 13px 18px; }
+.album-film-controls button { min-width: 44px; min-height: 40px; border: 1px solid var(--line-dark); border-radius: 10px; background: white; color: var(--green); font-size: 18px; }
+.album-film-controls button:disabled { opacity: .38; }
+.album-film-controls .album-film-play { min-width: 140px; border-color: var(--green); background: var(--green); color: white; font-size: 12px; font-weight: 800; }
+.album-film-empty { padding: 80px 20px; color: var(--muted); text-align: center; }
+.album-film-launch { display: inline-flex; align-items: center; gap: 9px; min-height: 42px; margin: 0 0 20px; border: 0; border-radius: 10px; background: var(--green); color: white; padding: 0 16px; font-size: 11px; font-weight: 800; }
+@keyframes album-film-photo { from { opacity: .55; transform: scale(1); } to { opacity: 1; transform: scale(1.045); } }
+@keyframes album-film-caption { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes album-film-step { to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .album-film-image, .album-film-caption { animation: none; } }
 .history-list { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); }
 .history-row { width: 100%; min-height: 130px; display: grid; grid-template-columns: 60px 210px 1fr 30px; align-items: center; gap: 22px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); padding: 16px 22px; text-align: left; }
 .history-row:last-child { border-bottom: 0; }
@@ -458,6 +552,7 @@ main { min-height: 100vh; }
   .expression-row { grid-template-columns: 38px 1fr 1.3fr; }
   .expression-row > p { grid-column: 2 / -1; }
   .history-row { grid-template-columns: 50px 180px 1fr 24px; }
+  .monthly-album-cover { height: 220px; }
 }
 
 @media (max-width: 700px) {
@@ -617,6 +712,30 @@ main { min-height: 100vh; }
   .history-thumbs img { height: 72px; }
   .history-copy { grid-column: 2; grid-row: 1; }
   .history-row > b { grid-column: 3; grid-row: 1; }
+  .album-notice { width: calc(100% - 24px); flex-wrap: wrap; gap: 8px; margin-top: 10px; padding: 10px; }
+  .album-notice-art { flex-basis: 36px; height: 36px; font-size: 21px; }
+  .album-notice p { flex-basis: calc(100% - 83px); }
+  .album-notice-open { margin-left: 44px; }
+  .album-notice-close { margin-left: auto; }
+  .monthly-album-grid { grid-template-columns: 1fr; gap: 14px; }
+  .album-toolbar-actions { display: grid; grid-template-columns: 1fr 1fr; margin-top: 18px; }
+  .album-toolbar-actions .secondary-action { margin-top: 0; }
+  .album-push-settings { display: block; padding: 17px; }
+  .album-push-actions { flex-wrap: wrap; margin-top: 14px; }
+  .monthly-album-cover { height: 235px; }
+  .monthly-album-cover > span { left: 19px; bottom: 17px; font-size: 32px; }
+  .monthly-album-copy { min-height: 105px; padding: 16px 19px 19px; }
+  .album-detail-heading h1 { font-size: clamp(47px, 13vw, 65px); }
+  .album-hero-grid { height: 265px; border-radius: 16px; }
+  .album-detail-intro { display: block; padding: 21px 2px 26px; }
+  .album-detail-intro p { margin-top: 10px; text-align: left; }
+  .album-day-story { padding: 30px 0 34px; }
+  .album-day-heading { display: block; }
+  .album-day-heading button { margin-top: 16px; }
+  .album-moment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .album-moment > img, .album-moment > .album-photo-placeholder { height: 135px; }
+  .album-moment > div:last-child { padding: 11px; }
+  .album-moment strong { font-size: 13px; }
 
   .mobile-nav { position: fixed; z-index: 50; left: 8px; right: 8px; bottom: calc(7px + env(safe-area-inset-bottom)); height: 61px; padding: 5px; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid rgba(210,217,207,.9); border-radius: 18px; background: rgba(252,252,248,.95); backdrop-filter: blur(18px); box-shadow: 0 12px 35px rgba(29,54,46,.16); }
   .mobile-nav button { min-width: 0; border: 0; border-radius: 13px; background: transparent; color: #7c8a84; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }

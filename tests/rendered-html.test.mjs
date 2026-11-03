@@ -25,6 +25,11 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(dashboard, /Add today/);
   assert.match(dashboard, /Generate today/);
   assert.match(dashboard, /Past days/);
+  assert.match(dashboard, /Monthly albums/);
+  assert.match(dashboard, /albumMonthLabel/);
+  assert.match(dashboard, /albumReadyForNotification/);
+  assert.match(dashboard, /album-moment-grid/);
+  assert.match(dashboard, /通知を試す/);
   assert.match(dashboard, /Delete this day/);
   assert.match(dashboard, /Delete this saved day/);
   assert.match(dashboard, /deleteDailyEntry/);
@@ -43,6 +48,9 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(dashboard, /reviewWordCount\(item\)/);
   assert.match(dashboard, /意味が同じなら、言い換えでも正解です/);
   assert.match(dashboard, /requestReviewGrade/);
+  assert.match(dashboard, /英語のレベル/);
+  assert.match(dashboard, /ENGLISH_LEVELS\.map/);
+  assert.match(dashboard, /reviewWordHints\(item\)/);
   assert.doesNotMatch(dashboard, /Complete the expression:/);
   assert.doesNotMatch(dashboard, /learningWords/);
   assert.doesNotMatch(dashboard, /reviewSessionIndex \+ 1\) %/);
@@ -50,6 +58,8 @@ test("renders the login entry and retains the authenticated product experience",
   assert.match(layout, /width: "device-width"/);
   assert.match(layout, /initialScale: 1/);
   assert.match(authProxy, /pathname === "\/privacy"/);
+  assert.match(authProxy, /pathname === "\/manifest\.webmanifest"/);
+  assert.match(authProxy, /pathname === "\/sw\.js"/);
   assert.doesNotMatch(`${home}${login}`, /Sample day|Morning commute|Badminton practice/);
   assert.doesNotMatch(`${home}${login}`, /codex-preview|Building your site|react-loading-skeleton/i);
 });
