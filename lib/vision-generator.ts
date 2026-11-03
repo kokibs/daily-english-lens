@@ -103,6 +103,8 @@ const styleInstructions: Record<ExpressionStyle, string> = {
   polite: `Expression style: polite. Use clear, courteous everyday English suitable for someone the learner does not know well. Keep sentences natural and concise, without stiff business language or extra details.`,
 };
 
+const finalReviewInstructions = `Before returning the JSON, briefly review the photo sentences, diary, and quiz examples. Revise only clear problems: wording unnatural for the selected style, a claim unsupported by the photo or compatible user note, wording above the selected learner level, or an unnecessarily obscure word or complicated construction. When a note is absent, do not turn a visible scene into an asserted unseen action. Keep accurate personal details, proper nouns, and natural variation; do not make good sentences generic just to simplify them. Do not output the review or add fields to the JSON.`;
+
 function isPhotoEntry(value: unknown): value is PhotoEntry {
   if (!value || typeof value !== "object") return false;
   const photo = value as Record<string, unknown>;
@@ -205,7 +207,7 @@ export async function generateWithVision(
       model,
       store: false,
       reasoning: { effort: "none" },
-      instructions: `${instructions}\n\n${levelInstructions[level]}\n\n${styleInstructions[style]}\n\nApply the selected learner level and expression style independently. The style must not add harder vocabulary or grammar than the level allows. At the intro level, use complete sentences even in the casual style. Keep Japanese translations faithful to the English wording and preserve the facts from the photos and notes.`,
+      instructions: `${instructions}\n\n${levelInstructions[level]}\n\n${styleInstructions[style]}\n\nApply the selected learner level and expression style independently. The style must not add harder vocabulary or grammar than the level allows. At the intro level, use complete sentences even in the casual style. Keep Japanese translations faithful to the English wording and preserve the facts from the photos and notes.\n\n${finalReviewInstructions}`,
       input: [{ role: "user", content }],
       text: {
         format: {
