@@ -156,7 +156,6 @@ main { min-height: 100vh; }
 .workspace-actions .danger-link { color: var(--danger); }
 
 .level-selector { width: min(100%, 500px); display: grid; gap: 7px; margin-top: 17px; }
-.level-selector.compact { margin: 0 0 19px; }
 .level-selector-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .level-selector-heading strong { font-size: 12px; }
 .level-selector-heading small, .level-selector-note { color: var(--muted); font-size: 10px; line-height: 1.45; }
@@ -602,7 +601,6 @@ main { min-height: 100vh; }
   .workspace-actions { margin-top: 14px; }
   .workspace-actions button { min-height: 38px; }
   .level-selector { gap: 7px; margin-top: 14px; }
-  .level-selector.compact { margin-bottom: 17px; }
   .level-options button { min-height: 37px; }
   .photo-input-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 17px 0; }
   .photo-input { border-radius: 11px; }

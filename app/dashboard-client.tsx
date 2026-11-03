@@ -681,7 +681,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
 
       {screen === "review" && (
         selectedReviewDate === null
-          ? <ReviewDayPicker entries={savedEntries} level={englishLevel} onLevelChange={changeEnglishLevel} onSelect={selectReviewDay} onCreate={goToCreate} />
+          ? <ReviewDayPicker entries={savedEntries} onSelect={selectReviewDay} onCreate={goToCreate} />
           : <ReviewScreen
               item={currentSessionReview}
               answer={answer}
@@ -694,7 +694,6 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
               mistakeCount={reviewMistakeIds.length}
               soundEnabled={quizSoundEnabled}
               level={englishLevel}
-              onLevelChange={changeEnglishLevel}
               onAnswer={updateReviewAnswer}
               onCheck={() => void checkAnswer()}
               onNext={nextQuestion}
@@ -912,14 +911,13 @@ function ProgressRail({ photoCount }: { photoCount: number }) {
   );
 }
 
-function LevelSelector({ level, onChange, disabled = false, compact = false }: {
+function LevelSelector({ level, onChange, disabled = false }: {
   level: EnglishLevel;
   onChange: (level: EnglishLevel) => void;
   disabled?: boolean;
-  compact?: boolean;
 }) {
   return (
-    <div className={`level-selector ${compact ? "compact" : ""}`}>
+    <div className="level-selector">
       <div className="level-selector-heading">
         <strong>英語のレベル</strong>
         <small>レベルはいつでも変更できます</small>
@@ -935,7 +933,7 @@ function LevelSelector({ level, onChange, disabled = false, compact = false }: {
         <p>{ENGLISH_LEVEL_DESCRIPTIONS[level]}</p>
         <div><span lang="en">{ENGLISH_LEVEL_EXAMPLES[level].english}</span><small>{ENGLISH_LEVEL_EXAMPLES[level].japanese}</small></div>
       </div>
-      {!compact && <small className="level-selector-note">次に生成する英文に反映されます。保存済みの英文は変わりません。</small>}
+      <small className="level-selector-note">次に生成する英文に反映されます。保存済みの英文は変わりません。</small>
     </div>
   );
 }
@@ -1125,10 +1123,8 @@ function ExpressionRow({ expression, index }: { expression: Expression; index: n
   );
 }
 
-function ReviewDayPicker({ entries, level, onLevelChange, onSelect, onCreate }: {
+function ReviewDayPicker({ entries, onSelect, onCreate }: {
   entries: DailyEntry[];
-  level: EnglishLevel;
-  onLevelChange: (level: EnglishLevel) => void;
   onSelect: (entry: DailyEntry) => void;
   onCreate: () => void;
 }) {
@@ -1138,7 +1134,6 @@ function ReviewDayPicker({ entries, level, onLevelChange, onSelect, onCreate }: 
   return (
     <section className="app-screen review-picker-page section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">Your review archive</p><h1>Choose a day</h1><p>復習したい日を選ぶと、その日の英語だけが出題されます。</p></div></div>
-      <LevelSelector level={level} onChange={onLevelChange} compact />
       <div className="review-day-list">
         {reviewableEntries.map((entry) => (
           <button className="review-day-card" type="button" key={entry.id} onClick={() => onSelect(entry)}>
@@ -1158,10 +1153,9 @@ function ReviewDayPicker({ entries, level, onLevelChange, onSelect, onCreate }: 
   );
 }
 
-function ReviewScreen({ item, level, onLevelChange, answer, feedback, grading, gradingError, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onChooseDay, onFinish, onToggleSound, onCreate }: {
+function ReviewScreen({ item, level, answer, feedback, grading, gradingError, index, total, complete, mistakeCount, soundEnabled, onAnswer, onCheck, onNext, onRepeatAll, onRepeatMistakes, onChooseDay, onFinish, onToggleSound, onCreate }: {
   item?: ReviewItem;
   level: EnglishLevel;
-  onLevelChange: (level: EnglishLevel) => void;
   answer: string;
   feedback: Feedback;
   grading: boolean;
@@ -1211,7 +1205,6 @@ function ReviewScreen({ item, level, onLevelChange, answer, feedback, grading, g
   return (
     <section className="app-screen review-page section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">{formatDay(item.entry.date)} · {Math.min(index + 1, total)} of {total}</p><h1>Review this day</h1><p>写真の記憶から、この日の英語を思い出そう。</p></div><div className="review-tools"><button className="review-change-day" type="button" onClick={onChooseDay}>← Change day</button><button className="sound-toggle" type="button" onClick={onToggleSound} aria-pressed={soundEnabled} aria-label={`Quiz sounds ${soundEnabled ? "on" : "off"}`}><span aria-hidden="true">{soundEnabled ? "♪" : "×"}</span>{soundEnabled ? "Sound on" : "Sound off"}</button><div className="review-meter"><span style={{ width: `${((index % Math.max(total, 1)) + 1) / Math.max(total, 1) * 100}%` }} /></div></div></div>
-      <LevelSelector level={level} onChange={onLevelChange} compact />
       <div className="review-workspace">
         <figure><img src={photo?.imageUrl} alt={photo?.label || "Memory for this question"} /><figcaption><span>{formatDay(item.entry.date, false)} · {approximatePhotoTime(photo?.time)}</span><strong>{photo?.label}</strong></figcaption></figure>
         <div className="review-question">
