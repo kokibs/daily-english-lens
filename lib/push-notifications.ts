@@ -16,7 +16,7 @@ function isAllowedPushEndpoint(value: string) {
       && (!url.port || url.port === "443")
       && (
         hostname === "fcm.googleapis.com"
-        || (hostname === "jmt17.google.com" && url.pathname.startsWith("/fcm/send/"))
+        || (/^jmt\d{1,3}\.google\.com$/.test(hostname) && url.pathname.startsWith("/fcm/send/"))
         || hostname === "updates.push.services.mozilla.com"
         || hostname.endsWith(".push.apple.com")
         || hostname.endsWith(".notify.windows.com")

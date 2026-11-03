@@ -12,10 +12,18 @@ const subscription = {
 
 test("accepts a browser push endpoint but rejects arbitrary destinations", () => {
   assert.deepEqual(parsePushSubscription(subscription), subscription);
-  assert.deepEqual(parsePushSubscription({ ...subscription, endpoint: "https://jmt17.google.com/fcm/send/example" }), {
-    ...subscription, endpoint: "https://jmt17.google.com/fcm/send/example",
-  });
+  for (const endpoint of [
+    "https://jmt17.google.com/fcm/send/example",
+    "https://jmt18.google.com/fcm/send/example",
+    "https://updates.push.services.mozilla.com/wpush/v2/example",
+    "https://api.push.apple.com/3/device/example",
+    "https://wns2-blu.notify.windows.com/?token=example",
+  ]) {
+    assert.deepEqual(parsePushSubscription({ ...subscription, endpoint }), { ...subscription, endpoint });
+  }
   assert.equal(parsePushSubscription({ ...subscription, endpoint: "https://jmt17.google.com/collect" }), null);
+  assert.equal(parsePushSubscription({ ...subscription, endpoint: "https://jmt17.google.com.evil.example/fcm/send/example" }), null);
+  assert.equal(parsePushSubscription({ ...subscription, endpoint: "https://api.push.apple.com.evil.example/3/device/example" }), null);
   assert.equal(parsePushSubscription({ ...subscription, endpoint: "https://example.com/collect" }), null);
   assert.equal(parsePushSubscription({ ...subscription, endpoint: "http://fcm.googleapis.com/fcm/send/example" }), null);
   assert.match(validatePushSubscription({ ...subscription, endpoint: "https://push.example.com/collect" }).error, /push\.example\.com/);
