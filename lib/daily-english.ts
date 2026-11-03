@@ -1,4 +1,5 @@
 import type { EnglishLevel } from "./english-level";
+import { DEFAULT_EXPRESSION_STYLE, type ExpressionStyle } from "./expression-style.ts";
 
 export type PhotoEntry = {
   id: string;
@@ -266,11 +267,15 @@ export function createDailyEntryFromPhotos(photos: PhotoEntry[], date = dateOnly
  * Client boundary for the server-side Vision model. Photos are sent only when
  * the user presses Generate; API credentials never reach the browser.
  */
-export async function generateDailyEnglish(photos: PhotoEntry[], level: EnglishLevel): Promise<DailyEntry> {
+export async function generateDailyEnglish(
+  photos: PhotoEntry[],
+  level: EnglishLevel,
+  style: ExpressionStyle = DEFAULT_EXPRESSION_STYLE,
+): Promise<DailyEntry> {
   const response = await fetch("/api/generate", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ photos, level }),
+    body: JSON.stringify({ photos, level, style }),
   });
   const result = await response.json() as DailyEntry | { error?: string };
   if (!response.ok) {

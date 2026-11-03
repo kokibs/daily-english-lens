@@ -17,6 +17,7 @@ import {
 } from "../lib/daily-english";
 import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud-entries";
 import { DEFAULT_ENGLISH_LEVEL, ENGLISH_LEVEL_DESCRIPTIONS, ENGLISH_LEVEL_EXAMPLES, ENGLISH_LEVEL_LABELS, ENGLISH_LEVELS, isEnglishLevel, type EnglishLevel } from "../lib/english-level";
+import { DEFAULT_EXPRESSION_STYLE, EXPRESSION_STYLE_EXAMPLES, EXPRESSION_STYLE_LABELS, EXPRESSION_STYLES, isExpressionStyle, type ExpressionStyle } from "../lib/expression-style";
 import { albumMonthLabel, albumReadyForNotification, monthlyAlbums, type MonthlyAlbum } from "../lib/monthly-albums";
 import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, reviewWordHints, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
@@ -36,6 +37,7 @@ type Feedback = ReviewGrade | null;
 const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
 const LEVEL_KEY_PREFIX = "daily-english-lens:english-level:";
+const STYLE_KEY_PREFIX = "daily-english-lens:expression-style:";
 const ALBUM_NOTICE_KEY_PREFIX = "daily-english-lens:album-notice:";
 const GENERATION_USAGE_KEY = "daily-english-lens:generation-usage";
 const MAX_PHOTOS = 10;
@@ -182,6 +184,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const gradingEpoch = useRef(0);
   const [quizSoundEnabled, setQuizSoundEnabled] = useState(true);
   const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(DEFAULT_ENGLISH_LEVEL);
+  const [expressionStyle, setExpressionStyle] = useState<ExpressionStyle>(DEFAULT_EXPRESSION_STYLE);
   const [selectedAlbumMonth, setSelectedAlbumMonth] = useState<string | null>(null);
   const [playingAlbumMonth, setPlayingAlbumMonth] = useState<string | null>(null);
   const [seenAlbumNotice, setSeenAlbumNotice] = useState<string | null>(null);
@@ -191,6 +194,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     let localEntries: DailyEntry[] = [];
     let soundEnabled = true;
     let preferredLevel: EnglishLevel = DEFAULT_ENGLISH_LEVEL;
+    let preferredStyle: ExpressionStyle = DEFAULT_EXPRESSION_STYLE;
     let lastSeenAlbum: string | null = null;
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -205,6 +209,8 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       soundEnabled = window.localStorage.getItem(SOUND_KEY) !== "off";
       const storedLevel = window.localStorage.getItem(`${LEVEL_KEY_PREFIX}${user.id}`);
       if (isEnglishLevel(storedLevel)) preferredLevel = storedLevel;
+      const storedStyle = window.localStorage.getItem(`${STYLE_KEY_PREFIX}${user.id}`);
+      if (isExpressionStyle(storedStyle)) preferredStyle = storedStyle;
       lastSeenAlbum = window.localStorage.getItem(`${ALBUM_NOTICE_KEY_PREFIX}${user.id}`);
     } catch {
       localEntries = [];
@@ -212,6 +218,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     const preferenceTimer = window.setTimeout(() => {
       setQuizSoundEnabled(soundEnabled);
       setEnglishLevel(preferredLevel);
+      setExpressionStyle(preferredStyle);
       setSeenAlbumNotice(lastSeenAlbum);
     }, 0);
 
@@ -393,6 +400,15 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     }
   }
 
+  function changeExpressionStyle(style: ExpressionStyle) {
+    setExpressionStyle(style);
+    try {
+      window.localStorage.setItem(`${STYLE_KEY_PREFIX}${user.id}`, style);
+    } catch {
+      // The choice still applies until this page is closed.
+    }
+  }
+
   async function addFiles(files: FileList | File[]) {
     const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
     const remaining = Math.max(0, MAX_PHOTOS - photos.length);
@@ -472,7 +488,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setGenerating(true);
     setGenerationError(null);
     try {
-      const result = await generateDailyEnglish(photos, englishLevel);
+      const result = await generateDailyEnglish(photos, englishLevel, expressionStyle);
       if (!unlimitedGenerationToday) recordGeneration();
       setActiveEntry(result);
       setSavedNotice(false);
@@ -642,6 +658,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
           fileDragging={fileDragging}
           generating={generating}
           englishLevel={englishLevel}
+          expressionStyle={expressionStyle}
           generationError={generationError}
           savedEntries={savedEntries}
           reviewItem={quickReview}
@@ -663,6 +680,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
           onClear={() => { setPhotos([]); setSelectedPhotoId(null); }}
           onGenerate={() => void createEnglish()}
           onLevelChange={changeEnglishLevel}
+          onStyleChange={changeExpressionStyle}
           onAnswer={updateReviewAnswer}
           onCheck={() => void checkAnswer()}
           onNext={nextQuestion}
@@ -759,6 +777,7 @@ function Dashboard(props: {
   fileDragging: boolean;
   generating: boolean;
   englishLevel: EnglishLevel;
+  expressionStyle: ExpressionStyle;
   generationError: string | null;
   savedEntries: DailyEntry[];
   reviewItem?: ReviewItem;
@@ -780,6 +799,7 @@ function Dashboard(props: {
   onClear: () => void;
   onGenerate: () => void;
   onLevelChange: (level: EnglishLevel) => void;
+  onStyleChange: (style: ExpressionStyle) => void;
   onAnswer: (answer: string) => void;
   onCheck: () => void;
   onNext: () => void;
@@ -822,6 +842,7 @@ function Dashboard(props: {
           </div>
 
           <LevelSelector level={props.englishLevel} onChange={props.onLevelChange} disabled={props.generating} />
+          <ExpressionStyleSettings style={props.expressionStyle} onChange={props.onStyleChange} disabled={props.generating} />
 
           {props.photos.length ? (
             <>
@@ -935,6 +956,26 @@ function LevelSelector({ level, onChange, disabled = false }: {
       </div>
       <small className="level-selector-note">次に生成する英文に反映されます。保存済みの英文は変わりません。</small>
     </div>
+  );
+}
+
+function ExpressionStyleSettings({ style, onChange, disabled }: {
+  style: ExpressionStyle;
+  onChange: (style: ExpressionStyle) => void;
+  disabled: boolean;
+}) {
+  return (
+    <details className="expression-style-settings">
+      <summary><span>表現スタイル <strong>{EXPRESSION_STYLE_LABELS[style]}</strong></span><small>詳細設定</small></summary>
+      <div className="expression-style-options" role="group" aria-label="英語の表現スタイルを選択">
+        {EXPRESSION_STYLES.map((option) => (
+          <button key={option} type="button" className={style === option ? "selected" : ""} aria-pressed={style === option} disabled={disabled} onClick={() => onChange(option)}>
+            {EXPRESSION_STYLE_LABELS[option]}
+          </button>
+        ))}
+      </div>
+      <p className="expression-style-example" aria-live="polite"><span lang="en">{EXPRESSION_STYLE_EXAMPLES[style]}</span><small>次に生成する英文に反映されます</small></p>
+    </details>
   );
 }
 

@@ -56,6 +56,7 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.match(captured.body.instructions, /at least two words long/);
   assert.match(captured.body.instructions, /natural expressions that someone would actually say/);
   assert.match(captured.body.instructions, /Learner level: intermediate/);
+  assert.match(captured.body.instructions, /Expression style: everyday conversation/);
   assert.equal(captured.body.input[0].content.filter((item) => item.type === "input_image").length, 2);
   assert.match(captured.body.input[0].content[1].text, /八坂神社に行った/);
   assert.match(captured.body.input[0].content[1].text, /2時55分/);
@@ -87,6 +88,25 @@ test("changes conversational vocabulary and nuance across all four levels", asyn
   assert.ok(prompts.every((prompt) => prompt.includes("Do not invent or remove essential information")));
 });
 
+test("applies expression style independently from the learner level", async () => {
+  const prompts = [];
+  const fakeFetch = async (_url, init) => {
+    prompts.push(JSON.parse(String(init.body)).instructions);
+    return Response.json({ output: [{ content: [{ type: "output_text", text: JSON.stringify(generated) }] }] });
+  };
+
+  for (const style of ["conversation", "casual", "polite"]) {
+    await generateWithVision(photos, "secret-test-key", "vision-test-model", fakeFetch, "beginner", style);
+  }
+
+  assert.ok(prompts.every((prompt) => prompt.includes("Learner level: beginner")));
+  assert.match(prompts[0], /Expression style: everyday conversation/);
+  assert.match(prompts[1], /Expression style: social media and casual/);
+  assert.match(prompts[1], /quiz example a complete sentence/);
+  assert.match(prompts[2], /Expression style: polite/);
+  assert.ok(prompts.every((prompt) => prompt.includes("style must not add harder vocabulary or grammar")));
+});
+
 test("rejects an unknown level before calling the model", async () => {
   const request = new Request("https://example.test/api/generate", {
     method: "POST",
@@ -99,6 +119,34 @@ test("rejects an unknown level before calling the model", async () => {
 
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /英語レベル/);
+});
+
+test("passes a selected style through the generation route and rejects unknown styles", async () => {
+  let prompt = "";
+  const fakeFetch = async (_url, init) => {
+    prompt = JSON.parse(String(init.body)).instructions;
+    return Response.json({ output: [{ content: [{ type: "output_text", text: JSON.stringify(generated) }] }] });
+  };
+  const valid = new Request("https://example.test/api/generate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ photos, level: "intro", style: "polite" }),
+  });
+  const response = await handleVisionGenerateRequest(valid, "test-key", undefined, fakeFetch);
+  assert.equal(response.status, 200);
+  assert.match(prompt, /Learner level: intro/);
+  assert.match(prompt, /Expression style: polite/);
+
+  const invalid = new Request("https://example.test/api/generate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ photos, style: "unknown" }),
+  });
+  const rejected = await handleVisionGenerateRequest(invalid, "test-key", undefined, async () => {
+    throw new Error("Vision API must not be called");
+  });
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /表現スタイル/);
 });
 
 test("rejects generated quiz clues that replace concrete nouns with blanks", async () => {

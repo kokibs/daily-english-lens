@@ -5,6 +5,7 @@ import {
   type PhotoEntry,
 } from "./daily-english.ts";
 import { DEFAULT_ENGLISH_LEVEL, isEnglishLevel, type EnglishLevel } from "./english-level.ts";
+import { DEFAULT_EXPRESSION_STYLE, isExpressionStyle, type ExpressionStyle } from "./expression-style.ts";
 
 type Fetcher = typeof fetch;
 
@@ -96,6 +97,12 @@ const levelInstructions: Record<EnglishLevel, string> = {
   advanced: `Learner level: advanced. Use a wider range of natural spoken vocabulary, apt phrasal verbs, idiomatic expressions, and subtle nuance when they truly fit the event. Do not use academic wording, rare idioms, needlessly complex grammar, or long sentences just to sound advanced. Keep quiz examples concise and complete.`,
 };
 
+const styleInstructions: Record<ExpressionStyle, string> = {
+  conversation: `Expression style: everyday conversation. Use natural spoken English that the learner could say to a friend. Avoid social-media shorthand, slang, and unnecessary formality.`,
+  casual: `Expression style: social media and casual. Use concise, natural, caption-like everyday English. A subject may be omitted in photo sentences or the diary when the meaning remains clear, but keep every quiz example a complete sentence that can be spoken and reviewed. Avoid forced slang and hashtags.`,
+  polite: `Expression style: polite. Use clear, courteous everyday English suitable for someone the learner does not know well. Keep sentences natural and concise, without stiff business language or extra details.`,
+};
+
 function isPhotoEntry(value: unknown): value is PhotoEntry {
   if (!value || typeof value !== "object") return false;
   const photo = value as Record<string, unknown>;
@@ -173,6 +180,7 @@ export async function generateWithVision(
   model = "gpt-5.6-luna",
   fetcher: Fetcher = fetch,
   level: EnglishLevel = DEFAULT_ENGLISH_LEVEL,
+  style: ExpressionStyle = DEFAULT_EXPRESSION_STYLE,
 ): Promise<DailyEntry> {
   const photos = normalizedPhotos(input);
   const content: Array<Record<string, unknown>> = [{
@@ -197,7 +205,7 @@ export async function generateWithVision(
       model,
       store: false,
       reasoning: { effort: "none" },
-      instructions: `${instructions}\n\n${levelInstructions[level]}`,
+      instructions: `${instructions}\n\n${levelInstructions[level]}\n\n${styleInstructions[style]}\n\nApply the selected learner level and expression style independently. The style must not add harder vocabulary or grammar than the level allows. At the intro level, use complete sentences even in the casual style. Keep Japanese translations faithful to the English wording and preserve the facts from the photos and notes.`,
       input: [{ role: "user", content }],
       text: {
         format: {
@@ -257,15 +265,17 @@ export async function handleVisionGenerateRequest(
     return Response.json({ error: "写真解析の準備がまだ完了していません。" }, { status: 503 });
   }
   try {
-    const body = await request.json() as { photos?: unknown; level?: unknown } | null;
+    const body = await request.json() as { photos?: unknown; level?: unknown; style?: unknown } | null;
     const level = body?.level ?? DEFAULT_ENGLISH_LEVEL;
     if (!isEnglishLevel(level)) throw new Error("英語レベルを選び直してください。");
-    const entry = await generateWithVision(body?.photos, apiKey, model, fetcher, level);
+    const style = body?.style ?? DEFAULT_EXPRESSION_STYLE;
+    if (!isExpressionStyle(style)) throw new Error("表現スタイルを選び直してください。");
+    const entry = await generateWithVision(body?.photos, apiKey, model, fetcher, level, style);
     return Response.json(entry);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown vision error";
     console.error("Daily English Lens vision generation failed:", message);
-    const isClientError = message.startsWith("1〜10枚") || message.includes("容量") || message.includes("英語レベル");
+    const isClientError = message.startsWith("1〜10枚") || message.includes("容量") || message.includes("英語レベル") || message.includes("表現スタイル");
     const userMessage = isClientError
       ? message
       : "写真の解析に失敗しました。少し待って再試行してください。";
