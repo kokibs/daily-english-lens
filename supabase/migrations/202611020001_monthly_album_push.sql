@@ -18,6 +18,10 @@ alter table public.push_subscriptions enable row level security;
 
 grant select, insert, update, delete on public.push_subscriptions to authenticated;
 
+-- The scheduled server job needs only these privileges; it never edits diaries.
+grant select on public.daily_entries to service_role;
+grant select, update, delete on public.push_subscriptions to service_role;
+
 create policy "Users can read their own push subscriptions"
 on public.push_subscriptions for select to authenticated
 using ((select auth.uid()) = user_id);
