@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
-import { albumPushPayload, monthBounds, monthForPush, parsePushSubscription, shouldSendAlbumPush } from "../lib/push-notifications.ts";
+import { albumPushPayload, monthBounds, monthForPush, parsePushSubscription, shouldSendAlbumPush, validatePushSubscription } from "../lib/push-notifications.ts";
 
 const subscription = {
   endpoint: "https://fcm.googleapis.com/fcm/send/example",
@@ -14,6 +14,8 @@ test("accepts a browser push endpoint but rejects arbitrary destinations", () =>
   assert.deepEqual(parsePushSubscription(subscription), subscription);
   assert.equal(parsePushSubscription({ ...subscription, endpoint: "https://example.com/collect" }), null);
   assert.equal(parsePushSubscription({ ...subscription, endpoint: "http://fcm.googleapis.com/fcm/send/example" }), null);
+  assert.match(validatePushSubscription({ ...subscription, endpoint: "https://push.example.com/collect" }).error, /push\.example\.com/);
+  assert.equal(validatePushSubscription({ ...subscription, keys: {} }).error, "通知用の暗号化情報を読み取れませんでした。");
 });
 
 test("sends only for a completed month with entries and only once per subscription", () => {

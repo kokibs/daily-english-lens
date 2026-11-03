@@ -1,4 +1,4 @@
-import { parsePushSubscription } from "../../../../lib/push-notifications";
+import { validatePushSubscription } from "../../../../lib/push-notifications";
 import { devPushSubscriptionsForUser, removeDevPushSubscription, saveDevPushSubscription } from "../../../../lib/push-dev-store";
 import { isPushConfigured } from "../../../../lib/push-server";
 import { createClient } from "../../../../lib/supabase/server";
@@ -18,13 +18,15 @@ async function context(request: Request) {
 }
 
 async function subscriptionBody(request: Request) {
-  if (Number(request.headers.get("content-length")) > 4096) return null;
+  if (Number(request.headers.get("content-length")) > 4096) {
+    return { subscription: null, error: "通知登録の情報が大きすぎます。" };
+  }
   try {
     const raw = await request.text();
-    if (raw.length > 4096) return null;
-    return parsePushSubscription(JSON.parse(raw));
+    if (raw.length > 4096) return { subscription: null, error: "通知登録の情報が大きすぎます。" };
+    return validatePushSubscription(JSON.parse(raw));
   } catch {
-    return null;
+    return { subscription: null, error: "通知登録の形式が正しくありません。" };
   }
 }
 
@@ -32,8 +34,8 @@ export async function POST(request: Request) {
   const result = await context(request);
   if (result.error) return result.error;
   const { supabase, user } = result;
-  const subscription = await subscriptionBody(request);
-  if (!subscription) return Response.json({ error: "通知登録を読み取れませんでした。" }, { status: 400 });
+  const { subscription, error: subscriptionError } = await subscriptionBody(request);
+  if (!subscription) return Response.json({ error: subscriptionError }, { status: 400 });
 
   if (request.headers.get("x-push-status") === "1") {
     if (process.env.NODE_ENV === "development") {
@@ -69,8 +71,8 @@ export async function DELETE(request: Request) {
   const result = await context(request);
   if (result.error) return result.error;
   const { supabase, user } = result;
-  const subscription = await subscriptionBody(request);
-  if (!subscription) return Response.json({ error: "通知登録を読み取れませんでした。" }, { status: 400 });
+  const { subscription, error: subscriptionError } = await subscriptionBody(request);
+  if (!subscription) return Response.json({ error: subscriptionError }, { status: 400 });
 
   if (process.env.NODE_ENV === "development") {
     removeDevPushSubscription(user.id, subscription.endpoint);

@@ -25,17 +25,31 @@ function isAllowedPushEndpoint(value: string) {
   }
 }
 
-export function parsePushSubscription(value: unknown): PushSubscriptionData | null {
-  if (!value || typeof value !== "object") return null;
+export function validatePushSubscription(value: unknown):
+  | { subscription: PushSubscriptionData; error: null }
+  | { subscription: null; error: string } {
+  if (!value || typeof value !== "object") return { subscription: null, error: "通知登録の形式が正しくありません。" };
   const candidate = value as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
-  if (typeof candidate.endpoint !== "string" || candidate.endpoint.length > 2048
-    || !isAllowedPushEndpoint(candidate.endpoint)) return null;
+  if (typeof candidate.endpoint !== "string" || candidate.endpoint.length > 2048) {
+    return { subscription: null, error: "通知登録のURLを読み取れませんでした。" };
+  }
+  if (!isAllowedPushEndpoint(candidate.endpoint)) {
+    let hostname = "不明";
+    try { hostname = new URL(candidate.endpoint).hostname.slice(0, 100); } catch { /* Keep a generic message for malformed URLs. */ }
+    return { subscription: null, error: `このブラウザの通知サービス（${hostname}）に未対応です。` };
+  }
   const p256dh = candidate.keys?.p256dh;
   const auth = candidate.keys?.auth;
   if (typeof p256dh !== "string" || typeof auth !== "string"
     || !/^[A-Za-z0-9_-]{40,200}$/.test(p256dh)
-    || !/^[A-Za-z0-9_-]{16,100}$/.test(auth)) return null;
-  return { endpoint: candidate.endpoint, keys: { p256dh, auth } };
+    || !/^[A-Za-z0-9_-]{16,100}$/.test(auth)) {
+    return { subscription: null, error: "通知用の暗号化情報を読み取れませんでした。" };
+  }
+  return { subscription: { endpoint: candidate.endpoint, keys: { p256dh, auth } }, error: null };
+}
+
+export function parsePushSubscription(value: unknown): PushSubscriptionData | null {
+  return validatePushSubscription(value).subscription;
 }
 
 export function monthBounds(month: string) {
