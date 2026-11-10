@@ -19,6 +19,7 @@ import { deleteDailyEntry, loadDailyEntries, saveDailyEntry } from "../lib/cloud
 import { DEFAULT_ENGLISH_LEVEL, ENGLISH_LEVEL_DESCRIPTIONS, ENGLISH_LEVEL_EXAMPLES, ENGLISH_LEVEL_LABELS, ENGLISH_LEVELS, isEnglishLevel, type EnglishLevel } from "../lib/english-level";
 import { DEFAULT_EXPRESSION_STYLE, EXPRESSION_STYLE_EXAMPLES, EXPRESSION_STYLE_LABELS, EXPRESSION_STYLES, isExpressionStyle, type ExpressionStyle } from "../lib/expression-style";
 import { albumMonthLabel, albumReadyForNotification, monthlyAlbums, type MonthlyAlbum } from "../lib/monthly-albums";
+import { loadLocalDraft, replaceLocalDraft, type LocalDraft } from "../lib/local-draft";
 import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, reviewWordHints, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
 import MonthlyAlbumFilm from "./monthly-album-film";
@@ -44,6 +45,20 @@ const MAX_PHOTOS = 10;
 const MAX_DAILY_GENERATIONS = 5;
 // Ten optimized images plus notes must stay below Vercel's 4.5 MB body limit.
 const MAX_IMAGE_DATA_URL_LENGTH = 360_000;
+
+function samePhotoInputs(left: PhotoEntry[], right: PhotoEntry[]) {
+  return left.length === right.length && left.every((photo, index) =>
+    photo.id === right[index].id && photo.note === right[index].note);
+}
+
+function sameSavedEntry(left: DailyEntry, right: DailyEntry) {
+  return left.id === right.id || (left.date === right.date
+    && left.diaryEnglish === right.diaryEnglish
+    && left.diaryJapanese === right.diaryJapanese
+    && samePhotoInputs(left.photos, right.photos)
+    && left.expressions.length === right.expressions.length
+    && left.expressions.every((item, index) => item.example === right.expressions[index].example));
+}
 
 function playSuccessChime() {
   const AudioContextClass = window.AudioContext || (window as typeof window & {
@@ -170,6 +185,8 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncIssue, setSyncIssue] = useState(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [draftIssue, setDraftIssue] = useState(false);
   const [quickReviewIndex, setQuickReviewIndex] = useState(0);
   const [selectedReviewDate, setSelectedReviewDate] = useState<string | null>(null);
   const [reviewSessionIds, setReviewSessionIds] = useState<string[]>([]);
@@ -189,6 +206,23 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const [playingAlbumMonth, setPlayingAlbumMonth] = useState<string | null>(null);
   const [seenAlbumNotice, setSeenAlbumNotice] = useState<string | null>(null);
   const [albumPreviewMonth, setAlbumPreviewMonth] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadLocalDraft(user.id).then((draft) => {
+      if (cancelled || !draft) return;
+      setPhotos(draft.photos);
+      setSelectedPhotoId(draft.selectedPhotoId ?? draft.photos[0]?.id ?? null);
+      setActiveEntry(draft.activeEntry);
+      setScreen(draft.screen === "today" && draft.activeEntry ? "today" : "home");
+      setSyncNotice("保存前の内容をこの端末から復元しました。");
+    }).catch(() => {
+      if (!cancelled) setDraftIssue(true);
+    }).finally(() => {
+      if (!cancelled) setDraftHydrated(true);
+    });
+    return () => { cancelled = true; };
+  }, [user.id]);
 
   useEffect(() => {
     let localEntries: DailyEntry[] = [];
@@ -266,6 +300,31 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     [savedEntries],
   );
   const albums = useMemo(() => monthlyAlbums(savedEntries), [savedEntries]);
+  useEffect(() => {
+    if (!draftHydrated) return;
+    const isSaved = !!activeEntry && (savedNotice || savedEntries.some((entry) => sameSavedEntry(activeEntry, entry)));
+    const draftEntry = isSaved ? null : activeEntry;
+    const draftPhotos = isSaved && activeEntry && samePhotoInputs(photos, activeEntry.photos) ? [] : photos;
+    const draft: LocalDraft | null = draftPhotos.length || draftEntry ? {
+      version: 1,
+      photos: draftPhotos,
+      selectedPhotoId: draftPhotos.some((photo) => photo.id === selectedPhotoId) ? selectedPhotoId : null,
+      activeEntry: draftEntry,
+      screen: screen === "today" && draftEntry ? "today" : "home",
+    } : null;
+    void replaceLocalDraft(user.id, draft).then(() => setDraftIssue(false)).catch(() => setDraftIssue(true));
+  }, [activeEntry, draftHydrated, photos, savedEntries, savedNotice, screen, selectedPhotoId, user.id]);
+
+  useEffect(() => {
+    if (loadingEntries || !activeEntry || savedNotice) return;
+    const saved = savedEntries.find((entry) => sameSavedEntry(activeEntry, entry));
+    if (!saved) return;
+    const timer = window.setTimeout(() => {
+      setActiveEntry(saved);
+      setSavedNotice(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeEntry, loadingEntries, savedEntries, savedNotice]);
   useEffect(() => {
     if (loadingEntries) return;
     const url = new URL(window.location.href);
@@ -490,6 +549,18 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     try {
       const result = await generateDailyEnglish(photos, englishLevel, expressionStyle);
       if (!unlimitedGenerationToday) recordGeneration();
+      try {
+        await replaceLocalDraft(user.id, {
+          version: 1,
+          photos,
+          selectedPhotoId,
+          activeEntry: result,
+          screen: "today",
+        });
+        setDraftIssue(false);
+      } catch {
+        setDraftIssue(true);
+      }
       setActiveEntry(result);
       setSavedNotice(false);
       setSaveError(null);
@@ -538,6 +609,10 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setDeleteError(null);
     try {
       await deleteDailyEntry(user.id, activeEntry);
+      if (samePhotoInputs(photos, activeEntry.photos)) {
+        setPhotos([]);
+        setSelectedPhotoId(null);
+      }
       setSavedEntries((entries) => entries.filter((entry) => entry.date !== activeEntry.date));
       setActiveEntry(null);
       setSelectedAlbumMonth(null);
@@ -639,6 +714,10 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
           <p>{loadingEntries ? "クラウドの日記を読み込んでいます…" : syncNotice}</p>
           {!loadingEntries && <button type="button" onClick={() => setSyncNotice(null)} aria-label="Close cloud status">×</button>}
         </div>
+      )}
+
+      {draftIssue && !loadingEntries && !syncNotice && (photos.length > 0 || activeEntry && !savedNotice) && (
+        <div className="cloud-status error" role="alert"><span>!</span><p>このブラウザでは保存前の内容を一時保存できません。更新すると消える可能性があります。</p></div>
       )}
 
       {albumNotice && (
