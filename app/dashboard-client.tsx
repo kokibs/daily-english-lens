@@ -1063,6 +1063,7 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
   onCreate: () => void;
 }) {
   const [speaking, setSpeaking] = useState(false);
+  const [saveDockMinimized, setSaveDockMinimized] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -1143,9 +1144,24 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
         </div>
       </section>
 
-      <div className="save-dock">
-        <div><span className="save-icon">{saved ? "✓" : saving ? "↻" : "♡"}</span><p><strong>{saved ? "Saved to your account." : saving ? "Saving your day…" : "Keep today in your memory."}</strong><small>{saved ? "Available on your other devices." : "Save today's sentences for review."}</small></p></div>
-        <button type="button" onClick={saved ? onReview : onSave} disabled={saving}>{saved ? "Start review" : saving ? "Saving…" : "Save today's English"}<span>→</span></button>
+      <div className={`save-dock${saveDockMinimized ? " minimized" : ""}`}>
+        {saveDockMinimized ? (
+          <>
+            <button className="save-dock-mini-action" type="button" onClick={saved ? onReview : onSave} disabled={saving}>
+              <span aria-hidden="true">{saved ? "✓" : "♡"}</span>{saved ? "復習する" : saving ? "保存中…" : "保存する"}
+            </button>
+            <button className="save-dock-toggle" type="button" onClick={() => setSaveDockMinimized(false)} aria-label="保存パネルを広げる" title="保存パネルを広げる">⌃</button>
+          </>
+        ) : (
+          <>
+            <div className="save-dock-head">
+              <span className="save-icon">{saved ? "✓" : saving ? "↻" : "♡"}</span>
+              <p><strong>{saved ? "Saved to your account." : saving ? "Saving your day…" : "Keep today in your memory."}</strong><small>{saved ? "Available on your other devices." : "Save today's sentences for review."}</small></p>
+              <button className="save-dock-toggle" type="button" onClick={() => setSaveDockMinimized(true)} aria-label="保存パネルを最小化" title="保存パネルを最小化">⌄</button>
+            </div>
+            <button className="save-dock-action" type="button" onClick={saved ? onReview : onSave} disabled={saving}>{saved ? "Start review" : saving ? "Saving…" : "Save today's English"}<span>→</span></button>
+          </>
+        )}
       </div>
       {saveError && <div className="save-error" role="alert">{saveError} <button type="button" onClick={onSave}>Try again</button></div>}
       {deleteError && <div className="save-error" role="alert">{deleteError} <button type="button" onClick={onDelete}>Try again</button></div>}

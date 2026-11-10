@@ -353,15 +353,6 @@ main { min-height: 100vh; }
 .expression-row > div small { color: var(--muted); font-size: 10px; }
 .expression-row blockquote { margin: 0; color: var(--ink); font: italic 14px/1.5 Georgia, serif; }
 .expression-row > p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
-.save-dock { position: sticky; z-index: 20; bottom: 18px; margin-top: 38px; display: flex; justify-content: space-between; align-items: center; gap: 25px; padding: 13px 14px 13px 19px; border: 1px solid var(--line-dark); border-radius: 16px; background: rgba(252, 252, 248, .94); backdrop-filter: blur(18px); box-shadow: var(--shadow); }
-.save-dock > div { display: flex; align-items: center; gap: 11px; }
-.save-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: #edf1e6; color: var(--green); }
-.save-dock p { margin: 0; display: flex; flex-direction: column; gap: 3px; }
-.save-dock strong { font-size: 11px; }
-.save-dock small { color: var(--soft); font-size: 9px; }
-.save-dock > button { min-width: 210px; height: 44px; display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: 10px; background: var(--green); color: white; padding: 0 10px 0 15px; font-size: 10px; font-weight: 800; }
-.save-dock > button span { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; background: var(--lime); color: var(--green); }
-.save-dock > button:disabled { opacity: .62; }
 .save-error { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 14px; border: 1px solid #e4c0b7; border-radius: 11px; background: #fbefec; color: #854d44; padding: 11px 13px; font-size: 10px; }
 .save-error button { border: 0; border-radius: 8px; background: var(--green); color: white; padding: 8px 11px; font-size: 9px; font-weight: 800; }
 
@@ -675,10 +666,6 @@ main { min-height: 100vh; }
   .expression-row { grid-template-columns: 30px 1fr; gap: 12px; padding: 18px 15px; }
   .expression-row blockquote, .expression-row > p { grid-column: 2; }
   .expression-row blockquote { margin-top: 2px; }
-  .save-dock { bottom: calc(74px + env(safe-area-inset-bottom)); margin-top: 28px; display: block; padding: 10px; }
-  .save-dock > div { padding: 4px 3px 11px; }
-  .save-dock > button { width: 100%; min-width: 0; }
-
   .review-tools { width: 100%; margin-top: 18px; align-items: stretch; }
   .review-change-day { align-self: flex-start; min-height: 36px; }
   .review-tools .sound-toggle { align-self: flex-end; }
