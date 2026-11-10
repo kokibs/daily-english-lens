@@ -1150,14 +1150,18 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
             <button className="save-dock-mini-action" type="button" onClick={saved ? onReview : onSave} disabled={saving}>
               <span aria-hidden="true">{saved ? "✓" : "♡"}</span>{saved ? "復習する" : saving ? "保存中…" : "保存する"}
             </button>
-            <button className="save-dock-toggle" type="button" onClick={() => setSaveDockMinimized(false)} aria-label="保存パネルを広げる" title="保存パネルを広げる">⌃</button>
+            <button className="save-dock-toggle" type="button" onClick={() => setSaveDockMinimized(false)} aria-label="保存パネルを広げる" title="保存パネルを広げる">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m5 15 7-7 7 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
           </>
         ) : (
           <>
             <div className="save-dock-head">
               <span className="save-icon">{saved ? "✓" : saving ? "↻" : "♡"}</span>
               <p><strong>{saved ? "Saved to your account." : saving ? "Saving your day…" : "Keep today in your memory."}</strong><small>{saved ? "Available on your other devices." : "Save today's sentences for review."}</small></p>
-              <button className="save-dock-toggle" type="button" onClick={() => setSaveDockMinimized(true)} aria-label="保存パネルを最小化" title="保存パネルを最小化">⌄</button>
+              <button className="save-dock-toggle" type="button" onClick={() => setSaveDockMinimized(true)} aria-label="保存パネルを最小化" title="保存パネルを最小化">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m5 9 7 7 7-7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
             </div>
             <button className="save-dock-action" type="button" onClick={saved ? onReview : onSave} disabled={saving}>{saved ? "Start review" : saving ? "Saving…" : "Save today's English"}<span>→</span></button>
           </>
