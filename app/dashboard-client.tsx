@@ -87,6 +87,17 @@ function playSuccessChime() {
   window.setTimeout(() => void context.close(), 700);
 }
 
+function setNarrationAudioSession(type: "auto" | "playback") {
+  // iPhone can route Web Audio to the silent/ringer channel unless playback is explicit.
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (!session) return;
+  try {
+    session.type = type;
+  } catch {
+    // Other browsers can keep using their default audio routing.
+  }
+}
+
 function formatDay(date: string, long = true) {
   return new Intl.DateTimeFormat("en-US", long
     ? { weekday: "long", month: "long", day: "numeric" }
@@ -1159,6 +1170,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       narrationBufferRef.current = null;
       void narrationContextRef.current?.close();
       narrationContextRef.current = null;
+      setNarrationAudioSession("auto");
     };
   }, [entry.id, entry.diaryEnglish]);
 
@@ -1168,6 +1180,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       narrationRequestRef.current = null;
       narrationSourceRef.current?.stop();
       narrationSourceRef.current = null;
+      setNarrationAudioSession("auto");
       setNarrationStatus("idle");
       return;
     }
@@ -1178,6 +1191,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       setNarrationError("このブラウザでは音声を再生できません。");
       return;
     }
+    setNarrationAudioSession("playback");
     const context = narrationContextRef.current ?? new AudioContextClass();
     narrationContextRef.current = context;
     // Start the audio context inside the click so iPhone Safari permits later playback.
@@ -1204,6 +1218,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
         if (narrationSourceRef.current === source) {
           narrationSourceRef.current = null;
           narrationRequestRef.current = null;
+          setNarrationAudioSession("auto");
           setNarrationStatus("idle");
         }
       };
@@ -1211,6 +1226,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       setNarrationStatus("playing");
     } catch (error) {
       if (!controller.signal.aborted) {
+        setNarrationAudioSession("auto");
         setNarrationError(error instanceof Error ? error.message : "音声を再生できませんでした。");
         setNarrationStatus("idle");
       }
