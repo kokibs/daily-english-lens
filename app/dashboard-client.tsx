@@ -47,6 +47,10 @@ const MAX_DAILY_GENERATIONS = 5;
 // Ten optimized images plus notes must stay below Vercel's 4.5 MB body limit.
 const MAX_IMAGE_DATA_URL_LENGTH = 360_000;
 
+function isSamanthaVoice(voice: SpeechSynthesisVoice) {
+  return voice.lang.toLowerCase() === "en-us" && /\bsamantha\b/i.test(voice.name);
+}
+
 function samePhotoInputs(left: PhotoEntry[], right: PhotoEntry[]) {
   return left.length === right.length && left.every((photo, index) =>
     photo.id === right[index].id && photo.note === right[index].note);
@@ -1164,6 +1168,8 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
     return () => synthesizer.removeEventListener("voiceschanged", updateVoices);
   }, []);
 
+  const defaultNarrationVoice = availableVoices.find(isSamanthaVoice);
+
   useEffect(() => {
     return () => {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -1180,7 +1186,9 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
     }
 
     const utterance = new SpeechSynthesisUtterance(entry.diaryEnglish);
-    const voice = selectedVoiceUri ? availableVoices.find((candidate) => candidate.voiceURI === selectedVoiceUri) : undefined;
+    const voices = availableVoices.length ? availableVoices : synthesizer.getVoices();
+    const voice = (selectedVoiceUri ? voices.find((candidate) => candidate.voiceURI === selectedVoiceUri) : undefined)
+      ?? voices.find(isSamanthaVoice);
     if (voice) utterance.voice = voice;
     utterance.lang = "en-US";
     utterance.rate = 0.9;
@@ -1203,7 +1211,8 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
     }
   }
 
-  const currentVoiceUri = availableVoices.some((voice) => voice.voiceURI === selectedVoiceUri) ? selectedVoiceUri : "";
+  const currentVoiceUri = selectedVoiceUri !== defaultNarrationVoice?.voiceURI
+    && availableVoices.some((voice) => voice.voiceURI === selectedVoiceUri) ? selectedVoiceUri : "";
 
   return (
     <section className="app-screen result-screen section-shell reveal">
@@ -1223,7 +1232,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       </div>
 
       <article className="diary-summary">
-        <div><span>DAY SUMMARY</span><div className="diary-audio-controls"><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button><label className="diary-voice-label" htmlFor="diary-voice">読み上げの声</label><select id="diary-voice" className="diary-voice-select" aria-label="読み上げの声" value={currentVoiceUri} onChange={(event) => changeNarrationVoice(event.target.value)}><option value="">端末の標準</option>{availableVoices.map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></div></div>
+        <div><span>DAY SUMMARY</span><div className="diary-audio-controls"><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button><label className="diary-voice-label" htmlFor="diary-voice">読み上げの声</label><select id="diary-voice" className="diary-voice-select" aria-label="読み上げの声" value={currentVoiceUri} onChange={(event) => changeNarrationVoice(event.target.value)}><option value="">{defaultNarrationVoice ? "Samantha（標準）" : "端末の標準"}</option>{availableVoices.filter((voice) => voice.voiceURI !== defaultNarrationVoice?.voiceURI).map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></div></div>
         <div><p>{entry.diaryEnglish}</p><small>{entry.diaryJapanese}</small></div>
       </article>
 
