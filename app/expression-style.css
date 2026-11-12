@@ -1,4 +1,4 @@
-.expression-style-settings { width: min(100%, 500px); margin: 7px 0 0; border-top: 1px solid var(--line); padding-top: 8px; }
+.expression-style-settings { width: 100%; margin: 7px 0 0; border-top: 1px solid var(--line); padding-top: 8px; }
 .expression-style-settings summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; list-style: none; color: var(--muted); font-size: 11px; cursor: pointer; }
 .expression-style-settings summary::-webkit-details-marker { display: none; }
 .expression-style-settings summary span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }

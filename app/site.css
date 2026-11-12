@@ -155,7 +155,7 @@ main { min-height: 100vh; }
 .workspace-actions button:hover { border-color: var(--green); }
 .workspace-actions .danger-link { color: var(--danger); }
 
-.level-selector { width: min(100%, 500px); display: grid; gap: 7px; margin-top: 17px; }
+.level-selector { width: 100%; display: grid; gap: 7px; margin-top: 17px; }
 .level-selector-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .level-selector-heading strong { font-size: 12px; }
 .level-selector-heading small, .level-selector-note { color: var(--muted); font-size: 10px; line-height: 1.45; }
