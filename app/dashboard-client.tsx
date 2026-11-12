@@ -39,6 +39,7 @@ const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
 const LEVEL_KEY_PREFIX = "daily-english-lens:english-level:";
 const STYLE_KEY_PREFIX = "daily-english-lens:expression-style:";
+const VOICE_KEY_PREFIX = "daily-english-lens:narration-voice:";
 const ALBUM_NOTICE_KEY_PREFIX = "daily-english-lens:album-notice:";
 const GENERATION_USAGE_KEY = "daily-english-lens:generation-usage";
 const MAX_PHOTOS = 10;
@@ -772,7 +773,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
 
       {screen === "today" && (
         activeEntry
-          ? <TodayScreen key={activeEntry.id} entry={activeEntry} saved={savedNotice} saving={saving} deleting={deleting} saveError={saveError} deleteError={deleteError} onSave={() => void saveToday()} onDelete={() => void deleteSavedDay()} onReview={() => navigate("review")} onCreate={goToCreate} />
+          ? <TodayScreen key={activeEntry.id} entry={activeEntry} userId={user.id} saved={savedNotice} saving={saving} deleting={deleting} saveError={saveError} deleteError={deleteError} onSave={() => void saveToday()} onDelete={() => void deleteSavedDay()} onReview={() => navigate("review")} onCreate={goToCreate} />
           : <EmptyState title="No English yet" body="今日の写真を追加すると、ここに英語が表示されます。" onCreate={goToCreate} />
       )}
 
@@ -1129,8 +1130,9 @@ function RecentDays({ entries, onOpen, onOpenHistory }: { entries: DailyEntry[];
   );
 }
 
-function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, onSave, onDelete, onReview, onCreate }: {
+function TodayScreen({ entry, userId, saved, saving, deleting, saveError, deleteError, onSave, onDelete, onReview, onCreate }: {
   entry: DailyEntry;
+  userId: string;
   saved: boolean;
   saving: boolean;
   deleting: boolean;
@@ -1143,6 +1145,24 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
 }) {
   const [speaking, setSpeaking] = useState(false);
   const [saveDockMinimized, setSaveDockMinimized] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceUri, setSelectedVoiceUri] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(`${VOICE_KEY_PREFIX}${userId}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    const synthesizer = window.speechSynthesis;
+    const updateVoices = () => setAvailableVoices(synthesizer.getVoices().filter((voice) => /^en(?:-|$)/i.test(voice.lang)));
+    updateVoices();
+    synthesizer.addEventListener("voiceschanged", updateVoices);
+    return () => synthesizer.removeEventListener("voiceschanged", updateVoices);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1160,8 +1180,7 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
     }
 
     const utterance = new SpeechSynthesisUtterance(entry.diaryEnglish);
-    const voice = synthesizer.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith("en-us"))
-      ?? synthesizer.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith("en"));
+    const voice = selectedVoiceUri ? availableVoices.find((candidate) => candidate.voiceURI === selectedVoiceUri) : undefined;
     if (voice) utterance.voice = voice;
     utterance.lang = "en-US";
     utterance.rate = 0.9;
@@ -1172,6 +1191,19 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
     synthesizer.speak(utterance);
     setSpeaking(true);
   }
+
+  function changeNarrationVoice(voiceUri: string) {
+    setSelectedVoiceUri(voiceUri);
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    setSpeaking(false);
+    try {
+      window.localStorage.setItem(`${VOICE_KEY_PREFIX}${userId}`, voiceUri);
+    } catch {
+      // The selection still applies until this page is closed.
+    }
+  }
+
+  const currentVoiceUri = availableVoices.some((voice) => voice.voiceURI === selectedVoiceUri) ? selectedVoiceUri : "";
 
   return (
     <section className="app-screen result-screen section-shell reveal">
@@ -1191,7 +1223,7 @@ function TodayScreen({ entry, saved, saving, deleting, saveError, deleteError, o
       </div>
 
       <article className="diary-summary">
-        <div><span>DAY SUMMARY</span><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button></div>
+        <div><span>DAY SUMMARY</span><div className="diary-audio-controls"><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button><label className="diary-voice-label" htmlFor="diary-voice">読み上げの声</label><select id="diary-voice" className="diary-voice-select" aria-label="読み上げの声" value={currentVoiceUri} onChange={(event) => changeNarrationVoice(event.target.value)}><option value="">端末の標準</option>{availableVoices.map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></div></div>
         <div><p>{entry.diaryEnglish}</p><small>{entry.diaryJapanese}</small></div>
       </article>
 
