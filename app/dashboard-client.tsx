@@ -51,6 +51,14 @@ function isSamanthaVoice(voice: SpeechSynthesisVoice) {
   return voice.lang.toLowerCase() === "en-us" && /\bsamantha\b/i.test(voice.name);
 }
 
+function fallbackEnglishVoice(voices: SpeechSynthesisVoice[]) {
+  return voices.find((voice) => voice.default && voice.lang.toLowerCase() === "en-us")
+    ?? voices.find((voice) => voice.default)
+    ?? voices.find((voice) => voice.lang.toLowerCase() === "en-us" && /^(?:Ava|Allison|Eddy|Reed|Google|Microsoft)\b/i.test(voice.name))
+    ?? voices.find((voice) => /^(?:Daniel|Karen|Google|Microsoft)\b/i.test(voice.name))
+    ?? voices[0];
+}
+
 function samePhotoInputs(left: PhotoEntry[], right: PhotoEntry[]) {
   return left.length === right.length && left.every((photo, index) =>
     photo.id === right[index].id && photo.note === right[index].note);
@@ -1150,6 +1158,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
   const [speaking, setSpeaking] = useState(false);
   const [saveDockMinimized, setSaveDockMinimized] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceLookupComplete, setVoiceLookupComplete] = useState(false);
   const [selectedVoiceUri, setSelectedVoiceUri] = useState(() => {
     if (typeof window === "undefined") return "";
     try {
@@ -1160,15 +1169,37 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
   });
 
   useEffect(() => {
-    if (!("speechSynthesis" in window)) return;
+    if (!("speechSynthesis" in window)) {
+      const timeout = setTimeout(() => setVoiceLookupComplete(true), 0);
+      return () => clearTimeout(timeout);
+    }
     const synthesizer = window.speechSynthesis;
-    const updateVoices = () => setAvailableVoices(synthesizer.getVoices().filter((voice) => /^en(?:-|$)/i.test(voice.lang)));
+    const updateVoices = () => {
+      const voices = synthesizer.getVoices().filter((voice) => /^en(?:-|$)/i.test(voice.lang));
+      setAvailableVoices(voices);
+      if (voices.some(isSamanthaVoice)) setVoiceLookupComplete(true);
+    };
     updateVoices();
     synthesizer.addEventListener("voiceschanged", updateVoices);
-    return () => synthesizer.removeEventListener("voiceschanged", updateVoices);
+    // Some browsers populate voices later without firing voiceschanged.
+    const retry = window.setInterval(updateVoices, 400);
+    const timeout = window.setTimeout(() => {
+      updateVoices();
+      setVoiceLookupComplete(true);
+      window.clearInterval(retry);
+    }, 2400);
+    return () => {
+      synthesizer.removeEventListener("voiceschanged", updateVoices);
+      window.clearInterval(retry);
+      window.clearTimeout(timeout);
+    };
   }, []);
 
   const defaultNarrationVoice = availableVoices.find(isSamanthaVoice);
+  const fallbackNarrationVoice = voiceLookupComplete ? fallbackEnglishVoice(availableVoices) : undefined;
+  const narrationVoice = (selectedVoiceUri ? availableVoices.find((voice) => voice.voiceURI === selectedVoiceUri) : undefined)
+    ?? defaultNarrationVoice
+    ?? fallbackNarrationVoice;
 
   useEffect(() => {
     return () => {
@@ -1185,11 +1216,16 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(entry.diaryEnglish);
-    const voices = availableVoices.length ? availableVoices : synthesizer.getVoices();
+    const voices = synthesizer.getVoices().filter((voice) => /^en(?:-|$)/i.test(voice.lang));
     const voice = (selectedVoiceUri ? voices.find((candidate) => candidate.voiceURI === selectedVoiceUri) : undefined)
-      ?? voices.find(isSamanthaVoice);
-    if (voice) utterance.voice = voice;
+      ?? voices.find(isSamanthaVoice)
+      ?? (voiceLookupComplete ? fallbackEnglishVoice(voices) : undefined);
+    if (!voice) {
+      setAvailableVoices(voices);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(entry.diaryEnglish);
+    utterance.voice = voice;
     utterance.lang = "en-US";
     utterance.rate = 0.9;
     utterance.pitch = 1;
@@ -1232,7 +1268,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       </div>
 
       <article className="diary-summary">
-        <div><span>DAY SUMMARY</span><div className="diary-audio-controls"><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : "Listen to the English diary"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button><label className="diary-voice-label" htmlFor="diary-voice">読み上げの声</label><select id="diary-voice" className="diary-voice-select" aria-label="読み上げの声" value={currentVoiceUri} onChange={(event) => changeNarrationVoice(event.target.value)}><option value="">{defaultNarrationVoice ? "Samantha（標準）" : "端末の標準"}</option>{availableVoices.filter((voice) => voice.voiceURI !== defaultNarrationVoice?.voiceURI).map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></div></div>
+        <div><span>DAY SUMMARY</span><div className="diary-audio-controls"><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} disabled={!speaking && !narrationVoice} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : narrationVoice ? "Listen to the English diary" : voiceLookupComplete ? "English voice is unavailable" : "English voice is loading"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button><label className="diary-voice-label" htmlFor="diary-voice">読み上げの声</label><select id="diary-voice" className="diary-voice-select" aria-label="読み上げの声" value={currentVoiceUri} onChange={(event) => changeNarrationVoice(event.target.value)}><option value="">{defaultNarrationVoice ? "Samantha（標準）" : fallbackNarrationVoice ? `${fallbackNarrationVoice.name}（標準）` : voiceLookupComplete ? "英語音声なし" : "音声を準備中"}</option>{availableVoices.filter((voice) => voice.voiceURI !== defaultNarrationVoice?.voiceURI).map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></div></div>
         <div><p>{entry.diaryEnglish}</p><small>{entry.diaryJapanese}</small></div>
       </article>
 
