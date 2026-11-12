@@ -31,9 +31,9 @@ const generated = {
     { photoId: "sashimi", english: "I enjoyed a plate of fresh sashimi.", japanese: "新鮮な刺身を味わった。" },
   ],
   expressions: [
-    { photoId: "shrine", expression: "visit a shrine", japanese: "神社を訪れる", example: "I visited a shrine today.", explanation: "観光や参拝で使える。" },
-    { photoId: "sashimi", expression: "enjoy a meal", japanese: "食事を楽しむ", example: "I enjoyed a delicious meal.", explanation: "食事の感想を伝える。" },
-    { photoId: "sashimi", expression: "fresh sashimi", japanese: "新鮮な刺身", example: "The fresh sashimi was delicious.", explanation: "料理の新鮮さを伝える。" },
+    { photoId: "shrine", expression: "visit a shrine", japanese: "神社を訪れる", example: "I visited a shrine today.", exampleJapanese: "今日は神社を訪れた。", explanation: "観光や参拝で使える。" },
+    { photoId: "sashimi", expression: "enjoy a meal", japanese: "食事を楽しむ", example: "I enjoyed a delicious meal.", exampleJapanese: "おいしい食事を楽しんだ。", explanation: "食事の感想を伝える。" },
+    { photoId: "sashimi", expression: "fresh sashimi", japanese: "新鮮な刺身", example: "The fresh sashimi was delicious.", exampleJapanese: "新鮮な刺身はおいしかった。", explanation: "料理の新鮮さを伝える。" },
   ],
 };
 
@@ -54,6 +54,7 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.match(captured.body.instructions, /Never put underscores/);
   assert.match(captured.body.instructions, /八坂神社を訪れてお参りする/);
   assert.match(captured.body.instructions, /at least two words long/);
+  assert.match(captured.body.instructions, /preserving its subject, action, tense/);
   assert.match(captured.body.instructions, /natural expressions that someone would actually say/);
   assert.match(captured.body.instructions, /Learner level: intermediate/);
   assert.match(captured.body.instructions, /Expression style: everyday conversation/);
@@ -62,6 +63,7 @@ test("sends every image and note to the Vision model and maps its result", async
   assert.match(captured.body.input[0].content[1].text, /2時55分/);
   assert.equal(entry.moments[0].english, "I visited Yasaka Shrine today.");
   assert.equal(entry.moments[1].english, "I enjoyed a plate of fresh sashimi.");
+  assert.equal(entry.expressions[0].exampleJapanese, "今日は神社を訪れた。");
   assert.ok(entry.expressions.every((item) => item.cloze.includes("______")));
 });
 
@@ -164,6 +166,19 @@ test("rejects generated quiz clues that replace concrete nouns with blanks", asy
     generateWithVision(photos, "secret-test-key", "vision-test-model", fakeFetch),
     /解析結果が不完全/,
   );
+});
+
+test("rejects a generated example without its matching Japanese review sentence", async () => {
+  const incomplete = {
+    ...generated,
+    expressions: generated.expressions.map((expression, index) => index === 0
+      ? { ...expression, exampleJapanese: "" }
+      : expression),
+  };
+  const fakeFetch = async () => Response.json({
+    output: [{ content: [{ type: "output_text", text: JSON.stringify(incomplete) }] }],
+  });
+  await assert.rejects(generateWithVision(photos, "secret-test-key", "vision-test-model", fakeFetch), /解析結果が不完全/);
 });
 
 test("accepts ten photos and returns one moment for each photo", async () => {

@@ -15,6 +15,8 @@ export type Expression = {
   expression: string;
   japanese: string;
   example: string;
+  // Full Japanese translation of the quiz answer. Older saved entries omit it.
+  exampleJapanese?: string;
   explanation: string;
   photoId?: string;
   cloze: string;

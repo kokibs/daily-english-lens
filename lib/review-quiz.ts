@@ -14,7 +14,7 @@ export function reviewItemKey(item: ReviewItem) {
 }
 
 export function reviewJapanesePrompt(item: ReviewItem) {
-  const japanese = item.expression.japanese;
+  const japanese = item.expression.exampleJapanese?.trim() || item.expression.japanese;
   if (!/(?:_{2,}|＿{2,}|\[\s*\]|\(\s*\))/.test(japanese)) return japanese;
   return item.entry.moments?.find((moment) => moment.photoId === item.expression.photoId)?.japanese
     ?? item.entry.diaryJapanese
@@ -23,6 +23,34 @@ export function reviewJapanesePrompt(item: ReviewItem) {
 
 export function reviewWordCount(item: ReviewItem) {
   return item.expression.example.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export async function repairLegacyReviewClues(entry: DailyEntry, fetcher: typeof fetch = fetch): Promise<Expression[]> {
+  if (entry.expressions.every((item) => !item.example?.trim() || item.exampleJapanese?.trim())) {
+    return entry.expressions;
+  }
+  const response = await fetcher("/api/review/repair-clues", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ date: entry.date }),
+  });
+  let body: { expressions?: unknown; error?: unknown };
+  try {
+    body = await response.json() as typeof body;
+  } catch {
+    throw new Error("復習問題を準備できませんでした。もう一度お試しください。");
+  }
+  if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "復習問題を準備できませんでした。");
+  if (!Array.isArray(body.expressions)
+    || body.expressions.length !== entry.expressions.length
+    || !body.expressions.every((item) => item && typeof item === "object"
+      && typeof (item as Expression).id === "string"
+      && (!(item as Expression).example?.trim()
+        || typeof (item as Expression).exampleJapanese === "string"
+          && !!(item as Expression).exampleJapanese!.trim()))) {
+    throw new Error("復習問題を準備できませんでした。もう一度お試しください。");
+  }
+  return body.expressions as Expression[];
 }
 
 const HINT_FILLER_WORDS = new Set(["i", "a", "an", "the", "to", "at", "in", "on", "of", "and", "with", "my", "we", "it", "was", "were", "is"]);

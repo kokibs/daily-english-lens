@@ -22,6 +22,7 @@ type VisionOutput = {
     expression: string;
     japanese: string;
     example: string;
+    exampleJapanese: string;
     explanation: string;
   }>;
 };
@@ -59,9 +60,10 @@ const outputSchema = {
           expression: { type: "string" },
           japanese: { type: "string" },
           example: { type: "string" },
+          exampleJapanese: { type: "string" },
           explanation: { type: "string" },
         },
-        required: ["photoId", "expression", "japanese", "example", "explanation"],
+        required: ["photoId", "expression", "japanese", "example", "exampleJapanese", "explanation"],
       },
     },
   },
@@ -88,6 +90,7 @@ Quiz content rules:
 - The expression and example must also use concrete nouns from that moment whenever known. Do not omit Yasaka Shrine, sashimi, badminton practice, or another known subject behind a placeholder.
 - Make each reusable expression at least two words long, so its review question tests a meaningful phrase rather than only one isolated word.
 - Write each example as a short complete sentence with concrete details from the photo or note. The learner will type this whole example in review, so avoid long compound sentences.
+- The japanese field explains the reusable expression. The exampleJapanese field is the review question: translate the entire example sentence into natural Japanese, preserving its subject, action, tense, negation, time, and concrete details. For example, "I visited Yasaka Shrine today." → 「今日は八坂神社を訪れた。」, not 「八坂神社を訪れる」. Do not ask for details in the English example that are absent from exampleJapanese.
 - Keep all difficulty changes in the English wording, not in the facts. Do not invent or remove essential information from the photo or note to fit a level.`;
 
 const levelInstructions: Record<EnglishLevel, string> = {
@@ -103,7 +106,7 @@ const styleInstructions: Record<ExpressionStyle, string> = {
   polite: `Expression style: polite. Use clear, courteous everyday English suitable for someone the learner does not know well. Keep sentences natural and concise, without stiff business language or extra details.`,
 };
 
-const finalReviewInstructions = `Before returning the JSON, briefly review the photo sentences, diary, and quiz examples. Revise only clear problems: wording unnatural for the selected style, a claim unsupported by the photo or compatible user note, wording above the selected learner level, or an unnecessarily obscure word or complicated construction. When a note is absent, do not turn a visible scene into an asserted unseen action. Keep accurate personal details, proper nouns, and natural variation; do not make good sentences generic just to simplify them. Do not output the review or add fields to the JSON.`;
+const finalReviewInstructions = `Before returning the JSON, briefly review the photo sentences, diary, and quiz examples. Revise only clear problems: wording unnatural for the selected style, a claim unsupported by the photo or compatible user note, wording above the selected learner level, or an unnecessarily obscure word or complicated construction. For every quiz example, check that exampleJapanese conveys the same action, tense, and essential details; correct only clear mismatches. When a note is absent, do not turn a visible scene into an asserted unseen action. Keep accurate personal details, proper nouns, and natural variation; do not make good sentences generic just to simplify them. Do not output the review or add fields to the JSON.`;
 
 function isPhotoEntry(value: unknown): value is PhotoEntry {
   if (!value || typeof value !== "object") return false;
@@ -163,9 +166,9 @@ function validatedOutput(value: unknown, photos: PhotoEntry[]): VisionOutput {
     && result.expressions.length >= 3
     && result.expressions.length <= 6
     && result.expressions.every((item) => allowedIds.has(item.photoId)
-      && [item.expression, item.japanese, item.example, item.explanation]
+      && [item.expression, item.japanese, item.example, item.exampleJapanese, item.explanation]
         .every((text) => typeof text === "string" && text.trim())
-      && [item.expression, item.japanese, item.example]
+      && [item.expression, item.japanese, item.example, item.exampleJapanese]
         .every((text) => !/(?:_{2,}|＿{2,}|\[\s*\]|\(\s*\))/.test(text))
       && item.expression.trim().split(/\s+/).length >= 2);
   if (typeof result.diaryEnglish !== "string" || !result.diaryEnglish.trim()
@@ -244,6 +247,7 @@ export async function generateWithVision(
       expression: item.expression.trim(),
       japanese: item.japanese.trim(),
       example: item.example.trim(),
+      exampleJapanese: item.exampleJapanese.trim(),
       explanation: item.explanation.trim(),
       cloze: makeCloze(item.example.trim(), item.expression.trim()),
     })),

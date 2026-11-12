@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   normalizeReviewAnswer,
+  repairLegacyReviewClues,
   requestReviewGrade,
   reviewItemKey,
   reviewItemsForEntry,
@@ -19,7 +20,7 @@ const entry = {
   diaryJapanese: "神戸女学院の文化祭に行き、装飾を見た。",
   moments: [{ photoId: "festival", english: "I went to the school festival at Kobe College and saw the decorations.", japanese: "神戸女学院の文化祭に行き、装飾を見た。" }],
   expressions: [
-    { id: "festival-expression", photoId: "festival", expression: "go to a school festival", japanese: "神戸女学院の文化祭に行く", example: "I went to a school festival at Kobe College.", explanation: "学校祭に行ったことを話す。", cloze: "I ______ at Kobe College." },
+    { id: "festival-expression", photoId: "festival", expression: "go to a school festival", japanese: "神戸女学院の文化祭に行く", example: "I went to a school festival at Kobe College.", exampleJapanese: "神戸女学院の文化祭に行った。", explanation: "学校祭に行ったことを話す。", cloze: "I ______ at Kobe College." },
     { id: "decoration-expression", photoId: "festival", expression: "an interesting decoration", japanese: "面白い装飾", example: "I saw an interesting decoration with waves and stars.", explanation: "装飾について話す。", cloze: "I saw ______ with waves and stars." },
   ],
 };
@@ -28,7 +29,7 @@ test("review uses the highlighted expression's Japanese clue and complete short 
   const items = reviewItemsForEntry(entry);
 
   assert.equal(items.length, 2);
-  assert.equal(reviewJapanesePrompt(items[0]), "神戸女学院の文化祭に行く");
+  assert.equal(reviewJapanesePrompt(items[0]), "神戸女学院の文化祭に行った。");
   assert.equal(items[0].expression.example, "I went to a school festival at Kobe College.");
   assert.equal(reviewWordCount(items[0]), 9);
   assert.deepEqual(reviewWordHints(items[0]), ["went", "school"]);
@@ -39,7 +40,7 @@ test("review skips expressions without an answer and replaces legacy blank clues
   const withBlankClue = {
     ...entry,
     expressions: [
-      { ...entry.expressions[0], japanese: "___の文化祭に行く" },
+      { ...entry.expressions[0], japanese: "___の文化祭に行く", exampleJapanese: undefined },
       { ...entry.expressions[1], example: "" },
     ],
   };
@@ -47,6 +48,17 @@ test("review skips expressions without an answer and replaces legacy blank clues
 
   assert.equal(items.length, 1);
   assert.equal(reviewJapanesePrompt(items[0]), entry.moments[0].japanese);
+});
+
+test("legacy review clues are repaired once and keep the original expression label", async () => {
+  const legacy = { ...entry, expressions: [{ ...entry.expressions[0], exampleJapanese: undefined }] };
+  const fakeFetch = async (_url, init) => {
+    assert.equal(JSON.parse(init.body).date, legacy.date);
+    return Response.json({ expressions: [{ ...legacy.expressions[0], exampleJapanese: "神戸女学院の文化祭に行った。" }] });
+  };
+  const repaired = await repairLegacyReviewClues(legacy, fakeFetch);
+  assert.equal(repaired[0].japanese, "神戸女学院の文化祭に行く");
+  assert.equal(reviewJapanesePrompt({ entry: legacy, expression: repaired[0] }), "神戸女学院の文化祭に行った。");
 });
 
 test("answer normalization tolerates punctuation and case but not only the extracted phrase", () => {

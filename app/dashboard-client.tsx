@@ -21,7 +21,7 @@ import { DEFAULT_EXPRESSION_STYLE, EXPRESSION_STYLE_EXAMPLES, EXPRESSION_STYLE_L
 import { albumMonthLabel, albumReadyForNotification, monthlyAlbums, type MonthlyAlbum } from "../lib/monthly-albums";
 import { loadLocalDraft, replaceLocalDraft, type LocalDraft } from "../lib/local-draft";
 import { loadNarrationAudio } from "../lib/narration-client";
-import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, reviewWordHints, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
+import { normalizeReviewAnswer, repairLegacyReviewClues, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, reviewWordHints, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
 import MonthlyAlbumFilm from "./monthly-album-film";
 import PushNotificationSettings, { unsubscribeBrowserPush } from "./push-notification-settings";
@@ -201,6 +201,8 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const [draftIssue, setDraftIssue] = useState(false);
   const [quickReviewIndex, setQuickReviewIndex] = useState(0);
   const [selectedReviewDate, setSelectedReviewDate] = useState<string | null>(null);
+  const [repairingReviewDate, setRepairingReviewDate] = useState<string | null>(null);
+  const [reviewPreparationError, setReviewPreparationError] = useState<string | null>(null);
   const [reviewSessionIds, setReviewSessionIds] = useState<string[]>([]);
   const [reviewSessionIndex, setReviewSessionIndex] = useState(0);
   const [reviewMistakeIds, setReviewMistakeIds] = useState<string[]>([]);
@@ -311,6 +313,19 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     () => savedEntries.flatMap(reviewItemsForEntry),
     [savedEntries],
   );
+  const quickReviewItems = reviewItems.filter((item) => !!item.expression.exampleJapanese?.trim());
+  const quickRepairAttempted = useRef(new Set<string>());
+  useEffect(() => {
+    if (loadingEntries || quickReviewItems.length) return;
+    const entry = savedEntries.find((item) => item.expressions.some((expression) => expression.example?.trim() && !expression.exampleJapanese?.trim()));
+    if (!entry || quickRepairAttempted.current.has(entry.id)) return;
+    quickRepairAttempted.current.add(entry.id);
+    void repairLegacyReviewClues(entry).then((expressions) => {
+      setSavedEntries((entries) => entries.map((item) => item.id === entry.id ? { ...item, expressions } : item));
+    }).catch(() => {
+      // Selecting the day offers an explicit retry if the background repair fails.
+    });
+  }, [loadingEntries, quickReviewItems.length, savedEntries]);
   const albums = useMemo(() => monthlyAlbums(savedEntries), [savedEntries]);
   useEffect(() => {
     if (!draftHydrated) return;
@@ -359,7 +374,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
   const previewAlbum = albums.find((album) => album.month === albumPreviewMonth);
   const playingAlbum = albums.find((album) => album.month === playingAlbumMonth);
   const albumNotice = previewAlbum ?? (!loadingEntries && readyAlbum?.month !== seenAlbumNotice ? readyAlbum : null);
-  const quickReview = reviewItems[quickReviewIndex % Math.max(reviewItems.length, 1)];
+  const quickReview = quickReviewItems[quickReviewIndex % Math.max(quickReviewItems.length, 1)];
   const reviewItemsById = useMemo(
     () => new Map(reviewItems.map((item) => [reviewItemKey(item), item])),
     [reviewItems],
@@ -408,12 +423,21 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
     setFeedback(null);
   }
 
-  function selectReviewDay(entry: DailyEntry) {
-    startReviewSession(
-      reviewItemsForEntry(entry).map(reviewItemKey),
-      entry.date,
-    );
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  async function selectReviewDay(entry: DailyEntry) {
+    if (repairingReviewDate) return;
+    setReviewPreparationError(null);
+    setRepairingReviewDate(entry.date);
+    try {
+      const expressions = await repairLegacyReviewClues(entry);
+      const prepared = { ...entry, expressions };
+      setSavedEntries((entries) => entries.map((item) => item.date === entry.date ? prepared : item));
+      startReviewSession(reviewItemsForEntry(prepared).map(reviewItemKey), entry.date);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setReviewPreparationError(error instanceof Error ? error.message : "復習問題を準備できませんでした。");
+    } finally {
+      setRepairingReviewDate(null);
+    }
   }
 
   function navigate(next: Screen) {
@@ -710,7 +734,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
       if (reviewSessionIndex + 1 >= reviewSessionItems.length) setReviewComplete(true);
       else setReviewSessionIndex((index) => index + 1);
     } else {
-      setQuickReviewIndex((index) => (index + 1) % Math.max(reviewItems.length, 1));
+      setQuickReviewIndex((index) => (index + 1) % Math.max(quickReviewItems.length, 1));
     }
     setAnswer("");
     setFeedback(null);
@@ -790,7 +814,7 @@ export default function DashboardClient({ user, unlimitedGenerationToday = false
 
       {screen === "review" && (
         selectedReviewDate === null
-          ? <ReviewDayPicker entries={savedEntries} onSelect={selectReviewDay} onCreate={goToCreate} />
+          ? <ReviewDayPicker entries={savedEntries} onSelect={(entry) => void selectReviewDay(entry)} preparingDate={repairingReviewDate} preparationError={reviewPreparationError} onCreate={goToCreate} />
           : <ReviewScreen
               item={currentSessionReview}
               answer={answer}
@@ -1327,9 +1351,11 @@ function ExpressionRow({ expression, index }: { expression: Expression; index: n
   );
 }
 
-function ReviewDayPicker({ entries, onSelect, onCreate }: {
+function ReviewDayPicker({ entries, onSelect, preparingDate, preparationError, onCreate }: {
   entries: DailyEntry[];
   onSelect: (entry: DailyEntry) => void;
+  preparingDate: string | null;
+  preparationError: string | null;
   onCreate: () => void;
 }) {
   const reviewableEntries = entries.filter((entry) => reviewItemsForEntry(entry).length > 0);
@@ -1338,16 +1364,17 @@ function ReviewDayPicker({ entries, onSelect, onCreate }: {
   return (
     <section className="app-screen review-picker-page section-shell reveal">
       <div className="page-toolbar"><div><p className="kicker">Your review archive</p><h1>Choose a day</h1><p>復習したい日を選ぶと、その日の英語だけが出題されます。</p></div></div>
+      {preparationError && <p className="review-check-error" role="alert">{preparationError}</p>}
       <div className="review-day-list">
         {reviewableEntries.map((entry) => (
-          <button className="review-day-card" type="button" key={entry.id} onClick={() => onSelect(entry)}>
+          <button className="review-day-card" type="button" key={entry.id} disabled={!!preparingDate} onClick={() => onSelect(entry)}>
             <div className="review-day-thumbs">
               {entry.photos.slice(0, 3).map((photo) => <img src={photo.imageUrl} alt="" key={photo.id} />)}
             </div>
             <div className="review-day-copy">
               <span>{formatDay(entry.date)}</span>
               <strong>{entry.diaryEnglish}</strong>
-              <small>{reviewItemsForEntry(entry).length} questions · {entry.photos.length} photos</small>
+              <small>{preparingDate === entry.date ? "問題文を準備中…" : `${reviewItemsForEntry(entry).length} questions · ${entry.photos.length} photos`}</small>
             </div>
             <b aria-hidden="true">→</b>
           </button>
