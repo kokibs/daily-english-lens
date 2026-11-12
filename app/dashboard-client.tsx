@@ -20,6 +20,7 @@ import { DEFAULT_ENGLISH_LEVEL, ENGLISH_LEVEL_DESCRIPTIONS, ENGLISH_LEVEL_EXAMPL
 import { DEFAULT_EXPRESSION_STYLE, EXPRESSION_STYLE_EXAMPLES, EXPRESSION_STYLE_LABELS, EXPRESSION_STYLES, isExpressionStyle, type ExpressionStyle } from "../lib/expression-style";
 import { albumMonthLabel, albumReadyForNotification, monthlyAlbums, type MonthlyAlbum } from "../lib/monthly-albums";
 import { loadLocalDraft, replaceLocalDraft, type LocalDraft } from "../lib/local-draft";
+import { loadNarrationAudio } from "../lib/narration-client";
 import { normalizeReviewAnswer, requestReviewGrade, reviewItemKey, reviewItemsForEntry, reviewJapanesePrompt, reviewWordCount, reviewWordHints, type ReviewGrade, type ReviewItem } from "../lib/review-quiz";
 import { createClient } from "../lib/supabase/client";
 import MonthlyAlbumFilm from "./monthly-album-film";
@@ -39,25 +40,12 @@ const STORAGE_KEY = "daily-english-lens:entries";
 const SOUND_KEY = "daily-english-lens:quiz-sound";
 const LEVEL_KEY_PREFIX = "daily-english-lens:english-level:";
 const STYLE_KEY_PREFIX = "daily-english-lens:expression-style:";
-const VOICE_KEY_PREFIX = "daily-english-lens:narration-voice:";
 const ALBUM_NOTICE_KEY_PREFIX = "daily-english-lens:album-notice:";
 const GENERATION_USAGE_KEY = "daily-english-lens:generation-usage";
 const MAX_PHOTOS = 10;
 const MAX_DAILY_GENERATIONS = 5;
 // Ten optimized images plus notes must stay below Vercel's 4.5 MB body limit.
 const MAX_IMAGE_DATA_URL_LENGTH = 360_000;
-
-function isSamanthaVoice(voice: SpeechSynthesisVoice) {
-  return voice.lang.toLowerCase() === "en-us" && /\bsamantha\b/i.test(voice.name);
-}
-
-function fallbackEnglishVoice(voices: SpeechSynthesisVoice[]) {
-  return voices.find((voice) => voice.default && voice.lang.toLowerCase() === "en-us")
-    ?? voices.find((voice) => voice.default)
-    ?? voices.find((voice) => voice.lang.toLowerCase() === "en-us" && /^(?:Ava|Allison|Eddy|Reed|Google|Microsoft)\b/i.test(voice.name))
-    ?? voices.find((voice) => /^(?:Daniel|Karen|Google|Microsoft)\b/i.test(voice.name))
-    ?? voices[0];
-}
 
 function samePhotoInputs(left: PhotoEntry[], right: PhotoEntry[]) {
   return left.length === right.length && left.every((photo, index) =>
@@ -1155,100 +1143,83 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
   onReview: () => void;
   onCreate: () => void;
 }) {
-  const [speaking, setSpeaking] = useState(false);
+  const [narrationStatus, setNarrationStatus] = useState<"idle" | "loading" | "playing">("idle");
+  const [narrationError, setNarrationError] = useState<string | null>(null);
   const [saveDockMinimized, setSaveDockMinimized] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [voiceLookupComplete, setVoiceLookupComplete] = useState(false);
-  const [selectedVoiceUri, setSelectedVoiceUri] = useState(() => {
-    if (typeof window === "undefined") return "";
-    try {
-      return window.localStorage.getItem(`${VOICE_KEY_PREFIX}${userId}`) ?? "";
-    } catch {
-      return "";
-    }
-  });
-
-  useEffect(() => {
-    if (!("speechSynthesis" in window)) {
-      const timeout = setTimeout(() => setVoiceLookupComplete(true), 0);
-      return () => clearTimeout(timeout);
-    }
-    const synthesizer = window.speechSynthesis;
-    const updateVoices = () => {
-      const voices = synthesizer.getVoices().filter((voice) => /^en(?:-|$)/i.test(voice.lang));
-      setAvailableVoices(voices);
-      if (voices.some(isSamanthaVoice)) setVoiceLookupComplete(true);
-    };
-    updateVoices();
-    synthesizer.addEventListener("voiceschanged", updateVoices);
-    // Some browsers populate voices later without firing voiceschanged.
-    const retry = window.setInterval(updateVoices, 400);
-    const timeout = window.setTimeout(() => {
-      updateVoices();
-      setVoiceLookupComplete(true);
-      window.clearInterval(retry);
-    }, 2400);
-    return () => {
-      synthesizer.removeEventListener("voiceschanged", updateVoices);
-      window.clearInterval(retry);
-      window.clearTimeout(timeout);
-    };
-  }, []);
-
-  const defaultNarrationVoice = availableVoices.find(isSamanthaVoice);
-  const fallbackNarrationVoice = voiceLookupComplete ? fallbackEnglishVoice(availableVoices) : undefined;
-  const narrationVoice = (selectedVoiceUri ? availableVoices.find((voice) => voice.voiceURI === selectedVoiceUri) : undefined)
-    ?? defaultNarrationVoice
-    ?? fallbackNarrationVoice;
+  const narrationContextRef = useRef<AudioContext | null>(null);
+  const narrationBufferRef = useRef<AudioBuffer | null>(null);
+  const narrationSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const narrationRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      narrationRequestRef.current?.abort();
+      narrationSourceRef.current?.stop();
+      narrationSourceRef.current = null;
+      narrationBufferRef.current = null;
+      void narrationContextRef.current?.close();
+      narrationContextRef.current = null;
     };
-  }, []);
+  }, [entry.id, entry.diaryEnglish]);
 
-  function toggleNarration() {
-    if (!("speechSynthesis" in window)) return;
-    const synthesizer = window.speechSynthesis;
-    if (speaking || synthesizer.speaking) {
-      synthesizer.cancel();
-      setSpeaking(false);
+  async function toggleNarration() {
+    if (narrationStatus !== "idle") {
+      narrationRequestRef.current?.abort();
+      narrationRequestRef.current = null;
+      narrationSourceRef.current?.stop();
+      narrationSourceRef.current = null;
+      setNarrationStatus("idle");
       return;
     }
-
-    const voices = synthesizer.getVoices().filter((voice) => /^en(?:-|$)/i.test(voice.lang));
-    const voice = (selectedVoiceUri ? voices.find((candidate) => candidate.voiceURI === selectedVoiceUri) : undefined)
-      ?? voices.find(isSamanthaVoice)
-      ?? (voiceLookupComplete ? fallbackEnglishVoice(voices) : undefined);
-    if (!voice) {
-      setAvailableVoices(voices);
+    const AudioContextClass = window.AudioContext || (window as typeof window & {
+      webkitAudioContext?: typeof AudioContext;
+    }).webkitAudioContext;
+    if (!AudioContextClass) {
+      setNarrationError("このブラウザでは音声を再生できません。");
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(entry.diaryEnglish);
-    utterance.voice = voice;
-    utterance.lang = "en-US";
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    synthesizer.cancel();
-    synthesizer.speak(utterance);
-    setSpeaking(true);
-  }
-
-  function changeNarrationVoice(voiceUri: string) {
-    setSelectedVoiceUri(voiceUri);
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    setSpeaking(false);
+    const context = narrationContextRef.current ?? new AudioContextClass();
+    narrationContextRef.current = context;
+    // Start the audio context inside the click so iPhone Safari permits later playback.
+    const resume = context.resume();
+    const controller = new AbortController();
+    narrationRequestRef.current = controller;
+    setNarrationError(null);
+    setNarrationStatus("loading");
     try {
-      window.localStorage.setItem(`${VOICE_KEY_PREFIX}${userId}`, voiceUri);
-    } catch {
-      // The selection still applies until this page is closed.
+      await resume;
+      let buffer = narrationBufferRef.current;
+      if (!buffer) {
+        const audio = await loadNarrationAudio(userId, entry.id, entry.diaryEnglish, controller.signal);
+        if (controller.signal.aborted) return;
+        buffer = await context.decodeAudioData(await audio.arrayBuffer());
+        narrationBufferRef.current = buffer;
+      }
+      if (controller.signal.aborted) return;
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      narrationSourceRef.current = source;
+      source.onended = () => {
+        if (narrationSourceRef.current === source) {
+          narrationSourceRef.current = null;
+          narrationRequestRef.current = null;
+          setNarrationStatus("idle");
+        }
+      };
+      source.start();
+      setNarrationStatus("playing");
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setNarrationError(error instanceof Error ? error.message : "音声を再生できませんでした。");
+        setNarrationStatus("idle");
+      }
+    } finally {
+      if (narrationRequestRef.current === controller && !narrationSourceRef.current) {
+        narrationRequestRef.current = null;
+      }
     }
   }
-
-  const currentVoiceUri = selectedVoiceUri !== defaultNarrationVoice?.voiceURI
-    && availableVoices.some((voice) => voice.voiceURI === selectedVoiceUri) ? selectedVoiceUri : "";
 
   return (
     <section className="app-screen result-screen section-shell reveal">
@@ -1268,7 +1239,7 @@ function TodayScreen({ entry, userId, saved, saving, deleting, saveError, delete
       </div>
 
       <article className="diary-summary">
-        <div><span>DAY SUMMARY</span><div className="diary-audio-controls"><button className={`diary-audio ${speaking ? "playing" : ""}`} type="button" onClick={toggleNarration} disabled={!speaking && !narrationVoice} aria-pressed={speaking} aria-label={speaking ? "Stop reading the English diary" : narrationVoice ? "Listen to the English diary" : voiceLookupComplete ? "English voice is unavailable" : "English voice is loading"}><b aria-hidden="true">{speaking ? "■" : "▶"}</b><small>{speaking ? "Stop" : "Listen"}</small></button><label className="diary-voice-label" htmlFor="diary-voice">読み上げの声</label><select id="diary-voice" className="diary-voice-select" aria-label="読み上げの声" value={currentVoiceUri} onChange={(event) => changeNarrationVoice(event.target.value)}><option value="">{defaultNarrationVoice ? "Samantha（標準）" : fallbackNarrationVoice ? `${fallbackNarrationVoice.name}（標準）` : voiceLookupComplete ? "英語音声なし" : "音声を準備中"}</option>{availableVoices.filter((voice) => voice.voiceURI !== defaultNarrationVoice?.voiceURI).map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></div></div>
+        <div><span>DAY SUMMARY</span><div className="diary-audio-controls"><button className={`diary-audio ${narrationStatus === "playing" ? "playing" : ""}`} type="button" onClick={() => void toggleNarration()} aria-pressed={narrationStatus === "playing"} aria-label={narrationStatus === "idle" ? "Listen to the English diary" : "Stop reading the English diary"}><b aria-hidden="true">{narrationStatus === "playing" ? "■" : "▶"}</b><small>{narrationStatus === "loading" ? "Loading" : narrationStatus === "playing" ? "Stop" : "Listen"}</small></button><small className="narration-disclosure">AI音声</small>{narrationError && <small className="narration-error" role="alert">{narrationError}</small>}</div></div>
         <div><p>{entry.diaryEnglish}</p><small>{entry.diaryJapanese}</small></div>
       </article>
 
