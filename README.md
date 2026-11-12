@@ -36,7 +36,7 @@ Daily English Lensは、自分自身の体験から英語を学べる教材を�
 - 写真と、その写真から生成された英文を1対1で表示
 - 入門・初級・中級・上級を選んで、今後生成する英文の語彙・自然な言い回し・ニュアンスを調整。入門・初級の復習には単語ヒントを表示（設定はこのブラウザに保存）
 - 表現スタイルは日常会話を初期値とし、生成画面の詳細設定からSNS・カジュアル／丁寧な表現にも変更可能（このブラウザに保存、保存済みの英文は変更しない）
-- 端末の英語音声による日記の読み上げ
+- 固定のAI音声による日記の読み上げ（再生した音声はこの端末に保存し、同じ日記の再生に再利用）
 - ホーム画面の1問復習と、日付を選んでその日だけを学べるReview画面（1周ごとの結果・全問再挑戦・間違えた問題だけの再挑戦に対応）
 - 復習では例文と同じ表現でなくても、意味の通る言い換えをAIが正解として判定
 - 復習問題では写真に写る場所・食べ物・活動などの具体的な名詞を日本語のヒントに残し、覚える英語表現だけを穴埋めで出題
@@ -98,6 +98,8 @@ generateDailyEnglish(photos: PhotoEntry[]): Promise<DailyEntry>
 - `lib/vision-generator.ts`：入力検証、写真と補足文の送信、生成結果の検証、穴埋め問題の作成
 - `app/api/generate/route.ts`：APIキーをサーバー側で保持する生成エンドポイント
 - `app/api/review/check/route.ts`：ログインを確認し、英文の意味をサーバー側で判定する復習エンドポイント。例文と完全一致する回答はAIを呼ばずに正解とし、判定エラーは誤答にせず再試行できます
+- `app/api/narrate/route.ts`：ログインを確認し、サーバー側のAPIキーで日記のAI音声を生成するエンドポイント
+- `lib/narration-audio.ts`・`lib/narration-text.ts`：固定の声による音声生成と、`11 p.m.`などの時刻を自然に読むための変換
 - 生成に失敗した場合はエラーを表示し、チュートリアル文や汎用文へ勝手に置き換えません
 
 日記データはSupabase Postgres、写真は非公開の`daily-photos`バケットへ保存します。Row Level Securityにより、ログインした本人だけが自分のデータを読み書きできます。以前の`localStorage`に日記が残っている場合は、Googleログイン後に一度だけクラウドへ移行し、端末から削除します。
@@ -148,6 +150,6 @@ type DailyEntry = {
 - CSSアニメーションとレスポンシブレイアウト
 - OpenAI Responses API
 - Supabase Auth、Postgres、非公開Storage
-- Web Speech API、Web Audio API
+- OpenAI Realtime APIによるAI音声、Web Audio API
 - Vercel
 - `localStorage`（サウンド設定と旧データの移行のみ）
